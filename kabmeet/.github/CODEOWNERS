@@ -1,0 +1,11 @@
+# One owner per folder — update handles as club maintainers join
+*                        @kab-ai-maintainers
+/apps/web/               @kab-web-lead
+/apps/api/               @kab-api-lead
+/apps/realtime/          @kab-realtime-lead
+/packages/shared/        @kab-api-lead
+/packages/video/         @kab-realtime-lead
+/packages/config/        @kab-web-lead
+/infra/                  @kab-infra-lead
+/tests/                  @kab-qa-lead
+/docs/                   @kab-ai-maintainers

@@ -1,0 +1,41 @@
+# Dependencies
+node_modules/
+.pnpm-store/
+
+# Environment files (never commit secrets)
+.env
+.env.*
+!.env.example
+
+# Build outputs
+dist/
+build/
+.next/
+out/
+*.tsbuildinfo
+
+# Logs & runtime
+logs/
+*.log
+npm-debug.log*
+pnpm-debug.log*
+
+# Databases & local storage
+*.db
+*.sqlite
+data/
+minio-data/
+postgres-data/
+redis-data/
+
+# Testing & coverage
+coverage/
+playwright-report/
+test-results/
+
+# OS & editor
+.DS_Store
+Thumbs.db
+.vscode/*
+!.vscode/extensions.json
+.idea/

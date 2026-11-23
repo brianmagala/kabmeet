@@ -1,0 +1,2 @@
+// Chat hooks placeholder
+export {};

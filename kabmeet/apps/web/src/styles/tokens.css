@@ -1,0 +1,40 @@
+/* Kabmeet Design Tokens (IndabaX Master + KAB AI Family) */
+:root {
+  --indaba-deep-green: #065A4B;
+  --signal-green: #00E676;
+  --kab-blue: #0072BB;
+  --sun-yellow: #F5EC1E;
+  --amber-gold: #F6A623;
+  --live-red: #E5484D;
+  --night-forest: #0A1F1A;
+  --mist: #F2F7F5;
+  --line-green-gray: #D5E3DE;
+
+  /* Light theme defaults */
+  --bg-canvas: var(--mist);
+  --bg-surface: #FFFFFF;
+  --bg-surface-elevated: #FFFFFF;
+  --text-primary: var(--night-forest);
+  --text-muted: #3A544D;
+  --border-subtle: var(--line-green-gray);
+
+  --color-primary: var(--signal-green);
+  --color-primary-foreground: var(--night-forest);
+  --color-secondary: var(--indaba-deep-green);
+  --color-secondary-foreground: #FFFFFF;
+  --color-info: var(--kab-blue);
+  --color-info-foreground: #FFFFFF;
+  --color-highlight: var(--sun-yellow);
+  --color-highlight-foreground: var(--night-forest);
+  --color-warning: var(--amber-gold);
+  --color-live: var(--live-red);
+}
+
+.dark {
+  --bg-canvas: var(--night-forest);
+  --bg-surface: var(--indaba-deep-green);
+  --bg-surface-elevated: #0E342C;
+  --text-primary: var(--mist);
+  --text-muted: #B6CEC7;
+  --border-subtle: rgba(213, 227, 222, 0.18);
+}

@@ -1,0 +1,2 @@
+// Communities hooks placeholder
+export {};

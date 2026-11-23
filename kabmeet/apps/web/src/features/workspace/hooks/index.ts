@@ -1,0 +1,2 @@
+// Workspace hooks placeholder
+export {};

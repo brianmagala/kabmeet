@@ -1,0 +1,60 @@
+@import "tailwindcss";
+@custom-variant dark (&:where(.dark, .dark *));
+@import "../styles/tokens.css";
+
+@theme inline {
+  --color-indaba-deep-green: var(--indaba-deep-green);
+  --color-signal-green: var(--signal-green);
+  --color-kab-blue: var(--kab-blue);
+  --color-sun-yellow: var(--sun-yellow);
+  --color-amber-gold: var(--amber-gold);
+  --color-live-red: var(--live-red);
+  --color-night-forest: var(--night-forest);
+  --color-mist: var(--mist);
+  --color-line-green-gray: var(--line-green-gray);
+
+  --color-background: var(--bg-canvas);
+  --color-surface: var(--bg-surface);
+  --color-surface-elevated: var(--bg-surface-elevated);
+  --color-foreground: var(--text-primary);
+  --color-muted: var(--text-muted);
+  --color-border: var(--border-subtle);
+
+  --font-display: var(--font-oswald), "Oswald", sans-serif;
+  --font-sans: var(--font-poppins), "Poppins", sans-serif;
+
+  --radius-card: 12px;
+  --radius-pill: 9999px;
+}
+
+@layer base {
+  html {
+    font-family: var(--font-poppins), "Poppins", sans-serif;
+    background-color: var(--bg-canvas);
+    color: var(--text-primary);
+  }
+
+  h1,
+  h2,
+  h3,
+  h4 {
+    font-family: var(--font-oswald), "Oswald", sans-serif;
+    text-wrap: balance;
+  }
+
+  *:focus-visible {
+    outline: 2px solid var(--sun-yellow);
+    outline-offset: 2px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}

@@ -1,0 +1,2 @@
+// Room hooks placeholder
+export {};

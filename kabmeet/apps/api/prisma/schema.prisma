@@ -1,0 +1,387 @@
+// Kabmeet PostgreSQL Schema (Phases 1–7)
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+enum UserRole {
+  VISITOR
+  MEMBER
+  SPEAKER
+  MODERATOR
+  HOST
+  LECTURER
+  ADMIN
+}
+
+enum RoleScopeType {
+  GLOBAL
+  COMMUNITY
+  SESSION
+}
+
+enum AuthTokenPurpose {
+  EMAIL_VERIFICATION
+  PASSWORD_RESET
+}
+
+enum LiveSessionStatus {
+  LIVE
+  UPCOMING
+  REPLAY
+}
+
+enum LiveSessionMode {
+  WATCH
+  ROOM
+  CLASS
+}
+
+enum ReportStatus {
+  OPEN
+  RESOLVED
+  DISMISSED
+}
+
+model Role {
+  id          String   @id @default(cuid())
+  key         UserRole @unique
+  displayName String
+  description String
+  rank        Int
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  users       User[]
+  permissions RolePermission[]
+}
+
+model User {
+  id                  String    @id @default(cuid())
+  email               String    @unique
+  universityId        String?   @unique
+  fullName            String
+  nickname            String?
+  department          String?
+  avatarUrl           String?
+  passwordHash        String
+  role                UserRole  @default(MEMBER)
+  isActive            Boolean   @default(true)
+  emailVerifiedAt     DateTime?
+  lastLoginAt         DateTime?
+  failedLoginAttempts Int       @default(0)
+  lockedUntil         DateTime?
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
+
+  roleRecord           Role                  @relation(fields: [role], references: [key])
+  sessions             Session[]
+  authTokens           AuthToken[]
+  roleAssignments      UserRoleAssignment[]  @relation("AssignedUser")
+  grantedAssignments   UserRoleAssignment[]  @relation("GrantedByUser")
+  communityMembers     CommunityMembership[]
+  roleChangesReceived  RoleAuditLog[]        @relation("RoleTargetUser")
+  roleChangesPerformed RoleAuditLog[]        @relation("RoleActorUser")
+  hostedSessions       LiveSession[]         @relation("SessionHost")
+  sessionReminders     SessionReminder[]
+  chatMessages         SessionChatMessage[]
+  qaQuestions          QaQuestion[]
+  attendanceRecords    AttendanceRecord[]
+  reportsSubmitted     ModerationReport[]
+  communityPosts       CommunityPost[]
+
+  @@index([role])
+  @@index([isActive])
+}
+
+model Session {
+  id         String    @id @default(cuid())
+  userId     String
+  tokenHash  String    @unique
+  userAgent  String?
+  ipAddress  String?
+  lastUsedAt DateTime  @default(now())
+  expiresAt  DateTime
+  revokedAt  DateTime?
+  createdAt  DateTime  @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([expiresAt])
+}
+
+model AuthToken {
+  id         String           @id @default(cuid())
+  userId     String
+  purpose    AuthTokenPurpose
+  tokenHash  String           @unique
+  expiresAt  DateTime
+  consumedAt DateTime?
+  createdAt  DateTime         @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, purpose])
+  @@index([expiresAt])
+}
+
+model Permission {
+  id          String   @id @default(cuid())
+  key         String   @unique
+  description String
+  createdAt   DateTime @default(now())
+
+  roles RolePermission[]
+}
+
+model RolePermission {
+  id           String   @id @default(cuid())
+  role         UserRole
+  permissionId String
+  createdAt    DateTime @default(now())
+
+  roleRecord Role       @relation(fields: [role], references: [key], onDelete: Cascade)
+  permission Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+
+  @@unique([role, permissionId])
+  @@index([role])
+}
+
+model UserRoleAssignment {
+  id          String        @id @default(cuid())
+  userId      String
+  role        UserRole
+  scopeType   RoleScopeType @default(GLOBAL)
+  scopeId     String?
+  grantedById String?
+  expiresAt   DateTime?
+  createdAt   DateTime      @default(now())
+
+  user      User  @relation("AssignedUser", fields: [userId], references: [id], onDelete: Cascade)
+  grantedBy User? @relation("GrantedByUser", fields: [grantedById], references: [id], onDelete: SetNull)
+
+  @@unique([userId, role, scopeType, scopeId])
+  @@index([userId, scopeType])
+}
+
+model RoleAuditLog {
+  id           String        @id @default(cuid())
+  targetUserId String
+  actorUserId  String
+  previousRole UserRole
+  newRole      UserRole
+  scopeType    RoleScopeType @default(GLOBAL)
+  scopeId      String?
+  reason       String?
+  createdAt    DateTime      @default(now())
+
+  targetUser User @relation("RoleTargetUser", fields: [targetUserId], references: [id], onDelete: Cascade)
+  actorUser  User @relation("RoleActorUser", fields: [actorUserId], references: [id], onDelete: Cascade)
+
+  @@index([targetUserId])
+  @@index([actorUserId])
+}
+
+model Community {
+  id          String   @id @default(cuid())
+  slug        String   @unique
+  name        String
+  description String
+  accentColor String   @default("#065A4B")
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  members  CommunityMembership[]
+  sessions LiveSession[]
+  posts    CommunityPost[]
+}
+
+model CommunityMembership {
+  id          String   @id @default(cuid())
+  userId      String
+  communityId String
+  role        UserRole @default(MEMBER)
+  joinedAt    DateTime @default(now())
+
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  community Community @relation(fields: [communityId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, communityId])
+  @@index([communityId])
+}
+
+model CommunityPost {
+  id          String   @id @default(cuid())
+  communityId String
+  authorId    String
+  title       String
+  body        String
+  createdAt   DateTime @default(now())
+
+  community Community @relation(fields: [communityId], references: [id], onDelete: Cascade)
+  author    User      @relation(fields: [authorId], references: [id], onDelete: Cascade)
+
+  @@index([communityId, createdAt])
+}
+
+model LiveSession {
+  id              String            @id @default(cuid())
+  title           String
+  description     String
+  communityId     String
+  hostId          String
+  status          LiveSessionStatus @default(UPCOMING)
+  mode            LiveSessionMode   @default(WATCH)
+  roomSlug        String            @unique
+  scheduledAt     DateTime
+  startedAt       DateTime?
+  endedAt         DateTime?
+  thumbnailUrl    String?
+  recordingUrl    String?
+  peakViewers     Int               @default(0)
+  chatLocked      Boolean           @default(false)
+  slowModeSeconds Int               @default(0)
+  blockedWords    String[]          @default([])
+  isPrivateClass  Boolean           @default(false)
+  courseCode      String?
+  createdAt       DateTime          @default(now())
+  updatedAt       DateTime          @updatedAt
+
+  community        Community            @relation(fields: [communityId], references: [id], onDelete: Cascade)
+  host             User                 @relation("SessionHost", fields: [hostId], references: [id], onDelete: Cascade)
+  reminders        SessionReminder[]
+  enrollments      ClassEnrollment[]
+  attendance       AttendanceRecord[]
+  chatMessages     SessionChatMessage[]
+  questions        QaQuestion[]
+  polls            LivePoll[]
+  workspace        SessionWorkspace?
+  moderationReport ModerationReport[]
+
+  @@index([status])
+  @@index([communityId])
+  @@index([isPrivateClass])
+}
+
+model SessionReminder {
+  id        String   @id @default(cuid())
+  sessionId String
+  userId    String
+  createdAt DateTime @default(now())
+
+  session LiveSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  user    User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([sessionId, userId])
+}
+
+model ClassEnrollment {
+  id               String   @id @default(cuid())
+  sessionId        String
+  studentIdentifier String
+  createdAt        DateTime @default(now())
+
+  session LiveSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
+  @@unique([sessionId, studentIdentifier])
+  @@index([studentIdentifier])
+}
+
+model AttendanceRecord {
+  id              String   @id @default(cuid())
+  sessionId       String
+  userId          String
+  joinedAt        DateTime @default(now())
+  lastSeenAt      DateTime @default(now())
+  durationSeconds Int      @default(0)
+
+  session LiveSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  user    User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([sessionId, userId])
+  @@index([sessionId])
+}
+
+model SessionChatMessage {
+  id        String   @id @default(cuid())
+  sessionId String
+  userId    String
+  text      String
+  stickerId String?
+  pinned    Boolean  @default(false)
+  upvotes   Int      @default(0)
+  createdAt DateTime @default(now())
+
+  session LiveSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  user    User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([sessionId, createdAt])
+}
+
+model QaQuestion {
+  id         String   @id @default(cuid())
+  sessionId  String
+  authorId   String
+  text       String
+  upvotes    Int      @default(1)
+  answered   Boolean  @default(false)
+  createdAt  DateTime @default(now())
+
+  session LiveSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  author  User        @relation(fields: [authorId], references: [id], onDelete: Cascade)
+
+  @@index([sessionId, upvotes])
+}
+
+model LivePoll {
+  id        String   @id @default(cuid())
+  sessionId String
+  question  String
+  closed    Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  session LiveSession      @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  options LivePollOption[]
+
+  @@index([sessionId])
+}
+
+model LivePollOption {
+  id        String   @id @default(cuid())
+  pollId    String
+  label     String
+  voteCount Int      @default(0)
+
+  poll LivePoll @relation(fields: [pollId], references: [id], onDelete: Cascade)
+}
+
+model SessionWorkspace {
+  id           String   @id @default(cuid())
+  sessionId    String   @unique
+  notes        String   @default("")
+  codeLanguage String   @default("python")
+  code         String   @default("")
+  tasksJson    Json     @default("[]")
+  updatedAt    DateTime @updatedAt
+
+  session LiveSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+}
+
+model ModerationReport {
+  id         String       @id @default(cuid())
+  sessionId  String
+  reporterId String
+  reason     String
+  status     ReportStatus @default(OPEN)
+  createdAt  DateTime     @default(now())
+
+  session  LiveSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  reporter User        @relation(fields: [reporterId], references: [id], onDelete: Cascade)
+
+  @@index([status])
+}

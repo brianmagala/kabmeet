@@ -1,0 +1,2 @@
+// HostPanel hooks placeholder
+export {};

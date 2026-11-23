@@ -1,0 +1,2 @@
+// Discover hooks placeholder
+export {};
