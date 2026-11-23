@@ -150,6 +150,9 @@ const createSessionSchema = z.object({
   description: z.string().trim().min(10).max(600),
   communitySlug: z.string().trim().min(2),
   mode: z.enum(['WATCH', 'ROOM']),
+  contentType: z
+    .enum(['ML_AI', 'CODING_JAM', 'CLOUD_INFRA', 'COMMUNITY_TALK', 'CLASS_SEMINAR'])
+    .optional(),
   startNow: z.boolean().default(false),
   scheduledAt: z.string().optional(),
 });
@@ -394,14 +397,23 @@ async function startServer() {
   // --- Phase 2: Discover & Communities ---
   app.get('/api/communities', attachOptionalAuth, (req: AuthedRequest, res) => {
     const uid = req.authUser?.id;
-    const list = store.state.communities.map((c) => {
-      const followers = store.state.communityFollows[c.slug] ?? [];
-      return {
-        ...c,
-        memberCount: c.memberCount + followers.length,
-        isFollowing: uid ? followers.includes(uid) : false,
-      };
-    });
+    const q = String(req.query.q ?? '').trim().toLowerCase();
+    const list = store.state.communities
+      .filter((c) =>
+        q
+          ? c.name.toLowerCase().includes(q) ||
+            c.slug.toLowerCase().includes(q) ||
+            c.description.toLowerCase().includes(q)
+          : true,
+      )
+      .map((c) => {
+        const followers = store.state.communityFollows[c.slug] ?? [];
+        return {
+          ...c,
+          memberCount: c.memberCount + followers.length,
+          isFollowing: uid ? followers.includes(uid) : false,
+        };
+      });
     res.json({ communities: list });
   });
 
@@ -504,10 +516,26 @@ async function startServer() {
             s.hostName.toLowerCase().includes(q)
           : true,
       )
-      .map((s) => ({
-        ...s,
-        reminded: uid ? (store.state.reminders[s.id] ?? []).includes(uid) : false,
-      }));
+      .map((s) => {
+        const hostUser = store.state.users.find((u) => u.id === s.hostId);
+        const reminderCount = (store.state.reminders[s.id] ?? []).length;
+        const qaCount = (store.state.questions[s.id] ?? []).length;
+        const attendeeCount =
+          s.status === 'LIVE'
+            ? s.viewerCount
+            : s.status === 'UPCOMING'
+              ? reminderCount
+              : s.peakViewers;
+        return {
+          ...s,
+          hostAvatarUrl: hostUser?.avatarUrl ?? null,
+          attendeeCount,
+          hasRecording: Boolean(s.hasRecording || s.status === 'REPLAY' || s.replayDurationSec),
+          isInteractive: Boolean(s.isInteractive || s.mode === 'ROOM' || s.mode === 'CLASS'),
+          hasQa: Boolean(s.hasQa || qaCount > 0),
+          reminded: uid ? (store.state.reminders[s.id] ?? []).includes(uid) : false,
+        };
+      });
 
     res.json({ sessions: list });
   });
@@ -526,9 +554,26 @@ async function startServer() {
       return;
     }
     const uid = req.authUser?.id;
+    const hostUser = store.state.users.find((u) => u.id === session.hostId);
+    const reminderCount = (store.state.reminders[id] ?? []).length;
+    const qaCount = (store.state.questions[id] ?? []).length;
     res.json({
       session: {
         ...session,
+        hostAvatarUrl: hostUser?.avatarUrl ?? null,
+        attendeeCount:
+          session.status === 'LIVE'
+            ? session.viewerCount
+            : session.status === 'UPCOMING'
+              ? reminderCount
+              : session.peakViewers,
+        hasRecording: Boolean(
+          session.hasRecording || session.status === 'REPLAY' || session.replayDurationSec,
+        ),
+        isInteractive: Boolean(
+          session.isInteractive || session.mode === 'ROOM' || session.mode === 'CLASS',
+        ),
+        hasQa: Boolean(session.hasQa || qaCount > 0),
         canJoin: true,
         reminded: uid ? (store.state.reminders[id] ?? []).includes(uid) : false,
       },
@@ -551,6 +596,7 @@ async function startServer() {
       }
 
       const nowIso = new Date().toISOString();
+      const defaultUpcomingIso = new Date(Date.now() + 3600_000).toISOString();
       const thumbByClub: Record<string, string> = {
         indabax: '/src/assets/images/session_ml_python_1795385728974.jpg',
         'kab-ai': '/src/assets/images/session_git_workshop_1795385728390.jpg',
@@ -567,7 +613,9 @@ async function startServer() {
         hostName: req.authUser!.fullName,
         status: parsed.data.startNow ? ('LIVE' as const) : ('UPCOMING' as const),
         mode: parsed.data.mode,
-        scheduledAt: parsed.data.scheduledAt || nowIso,
+        ...(parsed.data.contentType ? { contentType: parsed.data.contentType } : {}),
+        scheduledAt:
+          parsed.data.scheduledAt || (parsed.data.startNow ? nowIso : defaultUpcomingIso),
         startedAt: parsed.data.startNow ? nowIso : null,
         thumbnailUrl: thumbByClub[community.slug] ?? '/src/assets/images/hero_indabax_campus_1795385728289.jpg',
         viewerCount: 0,
@@ -578,7 +626,13 @@ async function startServer() {
       };
       store.state.sessions.unshift(created);
       store.save();
-      res.status(201).json({ session: created });
+      res.status(201).json({
+        session: {
+          ...created,
+          hostAvatarUrl: req.authUser!.avatarUrl ?? null,
+          attendeeCount: 0,
+        },
+      });
     },
   );
 
@@ -599,7 +653,7 @@ async function startServer() {
       list.push(uid);
     }
     store.save();
-    res.json({ reminded: idx < 0 });
+    res.json({ reminded: idx < 0, attendeeCount: list.length });
   });
 
   app.patch(
@@ -947,12 +1001,80 @@ async function startServer() {
     res.json({ report });
   });
 
+  const safeLinkSchema = z
+    .string()
+    .trim()
+    .min(1)
+    .max(300)
+    .refine((val) => /^https?:\/\//i.test(val) || val.startsWith('/'), {
+      message: 'URLs must start with https://, http://, or /',
+    });
+
+  const siteFooterSchema = z.object({
+    tagline: z.string().trim().min(2).max(220),
+    docsLabel: z.string().trim().min(1).max(60),
+    docsUrl: safeLinkSchema,
+    githubLabel: z.string().trim().min(1).max(60),
+    githubUrl: safeLinkSchema,
+    contactEmail: z.string().trim().email().max(120),
+    contactPhone: z.string().trim().min(3).max(40),
+    campusLocation: z.string().trim().min(2).max(120),
+  });
+
+  app.get('/api/site-footer', (_req, res) => {
+    res.json({ footer: store.state.siteFooter });
+  });
+
+  app.patch('/api/admin/site-footer', requireRoles('ADMIN'), (req, res) => {
+    const parsed = siteFooterSchema.safeParse(req.body);
+    if (!parsed.success) {
+      res.status(400).json({
+        message:
+          parsed.error.issues[0]?.message ||
+          'Please check the footer links, email, and contact fields.',
+      });
+      return;
+    }
+    store.state.siteFooter = {
+      ...parsed.data,
+      updatedAt: new Date().toISOString(),
+    };
+    store.save();
+    res.json({ footer: store.state.siteFooter });
+  });
+
   // --- Vite middleware / static serving ---
   if (process.env.NODE_ENV !== 'production') {
     const vite = await createViteServer({
-      server: { middlewareMode: true, hmr: false },
+      server: { middlewareMode: true, hmr: false, ws: false },
       appType: 'spa',
     });
+
+    // HMR is disabled in this environment; prevent @vite/client from opening
+    // an unexposed WebSocket on port 24678 while keeping style/hot-context APIs intact.
+    app.get('/@vite/client', async (req, res, next) => {
+      try {
+        const result = await vite.transformRequest(req.originalUrl);
+        if (!result) {
+          next();
+          return;
+        }
+        const patched = result.code
+          .replace(
+            /createConnection:\s*\(\)\s*=>\s*new WebSocket\([^)]*\)/g,
+            'createConnection: () => ({ readyState: 1, addEventListener() {}, removeEventListener() {}, send() {}, close() {} })',
+          )
+          .replace(
+            /transport\.connect\(createHMRHandler\(handleMessage\)\);/,
+            '/* HMR disabled: WebSocket transport skipped */',
+          );
+        res.setHeader('Content-Type', 'application/javascript; charset=utf-8');
+        res.send(patched);
+      } catch (err) {
+        next(err);
+      }
+    });
+
     app.use(vite.middlewares);
   } else {
     const distDir = path.resolve(process.cwd(), 'dist');

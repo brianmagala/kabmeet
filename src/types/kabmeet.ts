@@ -9,6 +9,12 @@ export type UserRole =
 
 export type SessionStatus = 'LIVE' | 'UPCOMING' | 'REPLAY';
 export type SessionMode = 'WATCH' | 'ROOM' | 'CLASS';
+export type SessionContentType =
+  | 'ML_AI'
+  | 'CODING_JAM'
+  | 'CLOUD_INFRA'
+  | 'COMMUNITY_TALK'
+  | 'CLASS_SEMINAR';
 
 export interface AuthUser {
   id: string;
@@ -50,19 +56,25 @@ export interface KabSession {
   communityName: string;
   hostId: string;
   hostName: string;
+  hostAvatarUrl?: string | null;
   status: SessionStatus;
   mode: SessionMode;
+  contentType?: SessionContentType;
   scheduledAt: string;
   startedAt: string | null;
   thumbnailUrl: string;
   viewerCount: number;
   peakViewers: number;
+  attendeeCount?: number;
   isPrivateClass: boolean;
   courseCode: string | null;
   allowedStudents: string[];
   canJoin?: boolean;
   reminded?: boolean;
   replayDurationSec?: number;
+  hasRecording?: boolean;
+  isInteractive?: boolean;
+  hasQa?: boolean;
 }
 
 export interface ChatMessage {
@@ -195,3 +207,16 @@ export interface RoleAuditEntry {
   newRole: UserRole;
   createdAt: string;
 }
+
+export interface SiteFooterConfig {
+  tagline: string;
+  docsLabel: string;
+  docsUrl: string;
+  githubLabel: string;
+  githubUrl: string;
+  contactEmail: string;
+  contactPhone: string;
+  campusLocation: string;
+  updatedAt?: string;
+}
+

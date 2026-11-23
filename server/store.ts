@@ -13,6 +13,7 @@ import type {
   QaQuestion,
   RoleAuditEntry,
   SessionWorkspace,
+  SiteFooterConfig,
   UserRole,
 } from '../src/types/kabmeet';
 
@@ -54,10 +55,26 @@ export interface KabmeetStoreData {
   attendance: AttendanceRecord[];
   reports: ModerationReport[];
   roleAuditLog: RoleAuditEntry[];
+  siteFooter: SiteFooterConfig;
 }
 
 const DATA_DIR = path.resolve(process.cwd(), 'data');
 const STORE_PATH = path.join(DATA_DIR, 'kabmeet-store.json');
+
+export function createDefaultSiteFooter(): SiteFooterConfig {
+  return {
+    tagline:
+      'Kabale University AI Club & IndabaX · Self-hosted live sessions and labs at ai.kab.ac.ug/indabax',
+    docsLabel: 'KAB AI Docs',
+    docsUrl: 'https://ai.kab.ac.ug/indabax',
+    githubLabel: 'GitHub Repository',
+    githubUrl: 'https://github.com/kabale-ai/kabmeet',
+    contactEmail: 'indabax@kab.ac.ug',
+    contactPhone: '+256 392 890 120',
+    campusLocation: 'Kikungiri Hill, Kabale University, Uganda',
+    updatedAt: new Date().toISOString(),
+  };
+}
 
 function createInitialStore(): KabmeetStoreData {
   const now = Date.now();
@@ -197,6 +214,7 @@ function createInitialStore(): KabmeetStoreData {
         hostName: 'Aisha Namukasa',
         status: 'LIVE',
         mode: 'WATCH',
+        contentType: 'ML_AI',
         scheduledAt: iso(-1800_000),
         startedAt: iso(-1800_000),
         thumbnailUrl: '/src/assets/images/session_ml_python_1795385728974.jpg',
@@ -217,11 +235,54 @@ function createInitialStore(): KabmeetStoreData {
         hostName: 'Aisha Namukasa',
         status: 'LIVE',
         mode: 'ROOM',
+        contentType: 'CODING_JAM',
         scheduledAt: iso(-900_000),
         startedAt: iso(-900_000),
         thumbnailUrl: '/src/assets/images/session_git_workshop_1795385728390.jpg',
         viewerCount: 1,
         peakViewers: 27,
+        isPrivateClass: false,
+        courseCode: null,
+        allowedStudents: [],
+      },
+      {
+        id: 'sess-indabax-vision',
+        title: 'Applied Computer Vision for East African Crops',
+        description:
+          'IndabaX Kabale hands-on seminar on leaf-disease detection, dataset augmentation, and lightweight edge inference for campus researchers.',
+        communitySlug: 'indabax',
+        communityName: 'IndabaX Kabale',
+        hostId: 'usr-lecturer-1',
+        hostName: 'Dr. Samuel Byamukama',
+        status: 'UPCOMING',
+        mode: 'WATCH',
+        contentType: 'ML_AI',
+        scheduledAt: iso(3600_000 * 4 + 25 * 60_000),
+        startedAt: null,
+        thumbnailUrl: '/src/assets/images/session_ml_python_1795385728974.jpg',
+        viewerCount: 0,
+        peakViewers: 0,
+        isPrivateClass: false,
+        courseCode: null,
+        allowedStudents: [],
+      },
+      {
+        id: 'sess-kabai-pytorch',
+        title: 'PyTorch Study Jam: Building Your First Classifier',
+        description:
+          'Collaborative KAB AI Club coding room covering tensors, autograd, and training loops from scratch.',
+        communitySlug: 'kab-ai',
+        communityName: 'KAB AI Club',
+        hostId: 'usr-host-1',
+        hostName: 'Aisha Namukasa',
+        status: 'UPCOMING',
+        mode: 'ROOM',
+        contentType: 'CODING_JAM',
+        scheduledAt: iso(3600_000 * 18),
+        startedAt: null,
+        thumbnailUrl: '/src/assets/images/session_git_workshop_1795385728390.jpg',
+        viewerCount: 0,
+        peakViewers: 0,
         isPrivateClass: false,
         courseCode: null,
         allowedStudents: [],
@@ -237,9 +298,31 @@ function createInitialStore(): KabmeetStoreData {
         hostName: 'Brian Mugisha',
         status: 'UPCOMING',
         mode: 'WATCH',
+        contentType: 'CLOUD_INFRA',
         scheduledAt: iso(3600_000 * 24),
         startedAt: null,
         thumbnailUrl: '/src/assets/images/session_cloud_lab_1795385729506.jpg',
+        viewerCount: 0,
+        peakViewers: 0,
+        isPrivateClass: false,
+        courseCode: null,
+        allowedStudents: [],
+      },
+      {
+        id: 'sess-community-townhall',
+        title: 'Kabale Tech Clubs Open Townhall & Lightning Talks',
+        description:
+          'Open community meetup across IndabaX, KAB AI, and Huawei Student Club to pitch project ideas and welcome new members.',
+        communitySlug: 'huawei-student-club',
+        communityName: 'Huawei Student Club',
+        hostId: 'usr-member-1',
+        hostName: 'Sarah Katushabe',
+        status: 'UPCOMING',
+        mode: 'WATCH',
+        contentType: 'COMMUNITY_TALK',
+        scheduledAt: iso(3600_000 * 30),
+        startedAt: null,
+        thumbnailUrl: '/src/assets/images/hero_indabax_campus_1795385728289.jpg',
         viewerCount: 0,
         peakViewers: 0,
         isPrivateClass: false,
@@ -257,6 +340,7 @@ function createInitialStore(): KabmeetStoreData {
         hostName: 'Dr. Samuel Byamukama',
         status: 'REPLAY',
         mode: 'WATCH',
+        contentType: 'ML_AI',
         scheduledAt: iso(-86400_000 * 3),
         startedAt: iso(-86400_000 * 3),
         thumbnailUrl: '/src/assets/images/hero_indabax_campus_1795385728289.jpg',
@@ -498,6 +582,7 @@ def softmax(logits):
         createdAt: iso(-86400_000 * 12),
       },
     ],
+    siteFooter: createDefaultSiteFooter(),
   };
 }
 
@@ -512,7 +597,47 @@ class StoreManager {
     try {
       if (fs.existsSync(STORE_PATH)) {
         const raw = fs.readFileSync(STORE_PATH, 'utf8');
-        return JSON.parse(raw) as KabmeetStoreData;
+        const parsed = JSON.parse(raw) as KabmeetStoreData;
+        let dirty = false;
+        if (!parsed.siteFooter) {
+          parsed.siteFooter = createDefaultSiteFooter();
+          dirty = true;
+        }
+        const now = Date.now();
+        const hasUpcomingIndabaOrKabAi = parsed.sessions.some(
+          (s) =>
+            (s.communitySlug === 'indabax' || s.communitySlug === 'kab-ai') &&
+            s.status === 'UPCOMING' &&
+            !s.isPrivateClass &&
+            new Date(s.scheduledAt).getTime() > now,
+        );
+        if (!hasUpcomingIndabaOrKabAi) {
+          const fresh = createInitialStore();
+          const defaultsToAdd = fresh.sessions.filter(
+            (s) =>
+              (s.id === 'sess-indabax-vision' || s.id === 'sess-kabai-pytorch') &&
+              !parsed.sessions.some((existing) => existing.id === s.id),
+          );
+          if (defaultsToAdd.length > 0) {
+            parsed.sessions.push(...defaultsToAdd);
+            dirty = true;
+          }
+        }
+        const hasCommunityTalkSeed = parsed.sessions.some(
+          (s) => s.id === 'sess-community-townhall',
+        );
+        if (!hasCommunityTalkSeed) {
+          const fresh = createInitialStore();
+          const townhall = fresh.sessions.find((s) => s.id === 'sess-community-townhall');
+          if (townhall) {
+            parsed.sessions.push(townhall);
+            dirty = true;
+          }
+        }
+        if (dirty) {
+          this.save(parsed);
+        }
+        return parsed;
       }
     } catch {
       // Fallback to fresh store if corrupted

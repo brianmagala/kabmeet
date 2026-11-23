@@ -7,7 +7,7 @@ import React, {
   useRef,
   useState,
 } from 'react';
-import type { AuthUser, UserRole } from '../types/kabmeet';
+import type { AuthUser, SiteFooterConfig, UserRole } from '../types/kabmeet';
 
 export type AppRoute =
   | 'discover'
@@ -56,6 +56,8 @@ interface KabmeetContextValue {
     department?: string | null;
     avatarUrl?: string | null;
   }) => Promise<AuthUser>;
+  siteFooter: SiteFooterConfig;
+  updateSiteFooter: (payload: Omit<SiteFooterConfig, 'updatedAt'>) => Promise<SiteFooterConfig>;
   logout: () => Promise<void>;
   refreshSession: () => Promise<void>;
 
@@ -89,6 +91,10 @@ export function useKabmeet(): KabmeetContextValue {
   return ctx;
 }
 
+export function useOptionalKabmeet(): KabmeetContextValue | null {
+  return useContext(KabmeetContext);
+}
+
 export function KabmeetProvider({ children }: { children: React.ReactNode }) {
   const [route, setRoute] = useState<AppRoute>('discover');
   const [activeSessionId, setActiveSessionId] = useState<string>('sess-ml-python');
@@ -105,6 +111,17 @@ export function KabmeetProvider({ children }: { children: React.ReactNode }) {
   const [explicitTheme, setExplicitTheme] = useState<boolean>(false);
   const [dataSaver, setDataSaver] = useState<boolean>(false);
   const [toasts, setToasts] = useState<ToastItem[]>([]);
+  const [siteFooter, setSiteFooter] = useState<SiteFooterConfig>({
+    tagline:
+      'Kabale University AI Club & IndabaX · Self-hosted live sessions and labs at ai.kab.ac.ug/indabax',
+    docsLabel: 'KAB AI Docs',
+    docsUrl: 'https://ai.kab.ac.ug/indabax',
+    githubLabel: 'GitHub Repository',
+    githubUrl: 'https://github.com/kabale-ai/kabmeet',
+    contactEmail: 'indabax@kab.ac.ug',
+    contactPhone: '+256 392 890 120',
+    campusLocation: 'Kikungiri Hill, Kabale University, Uganda',
+  });
 
   const [pendingRequests, setPendingRequests] = useState<number>(0);
   const [isNavigating, setIsNavigating] = useState<boolean>(false);
@@ -220,6 +237,20 @@ export function KabmeetProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     refreshSession();
   }, [refreshSession]);
+
+  useEffect(() => {
+    let active = true;
+    apiFetch<{ footer: SiteFooterConfig }>('/api/site-footer')
+      .then((res) => {
+        if (active && res.footer) setSiteFooter(res.footer);
+      })
+      .catch(() => {
+        // Keep defaults if offline
+      });
+    return () => {
+      active = false;
+    };
+  }, [apiFetch]);
 
   // Hydrate theme & data saver preferences
   useEffect(() => {
@@ -382,6 +413,19 @@ export function KabmeetProvider({ children }: { children: React.ReactNode }) {
     [apiFetch, pushToast],
   );
 
+  const updateSiteFooter = useCallback(
+    async (payload: Omit<SiteFooterConfig, 'updatedAt'>): Promise<SiteFooterConfig> => {
+      const res = await apiFetch<{ footer: SiteFooterConfig }>('/api/admin/site-footer', {
+        method: 'PATCH',
+        body: JSON.stringify(payload),
+      });
+      setSiteFooter(res.footer);
+      pushToast('Site footer updated across Kabmeet.', 'success');
+      return res.footer;
+    },
+    [apiFetch, pushToast],
+  );
+
   const logout = useCallback(async () => {
     try {
       if (accessToken) {
@@ -417,6 +461,8 @@ export function KabmeetProvider({ children }: { children: React.ReactNode }) {
       register,
       claimAdmin,
       updateUserProfile,
+      siteFooter,
+      updateSiteFooter,
       logout,
       refreshSession,
       theme,
@@ -448,6 +494,8 @@ export function KabmeetProvider({ children }: { children: React.ReactNode }) {
       register,
       claimAdmin,
       updateUserProfile,
+      siteFooter,
+      updateSiteFooter,
       logout,
       refreshSession,
       theme,

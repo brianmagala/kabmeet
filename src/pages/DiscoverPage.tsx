@@ -1,23 +1,16 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import {
-  Bell,
-  BellRing,
-  CalendarDays,
-  Play,
-  Plus,
-  Radio,
-  Search,
-  Users,
-  Video,
-  X,
-} from 'lucide-react';
+import { Play, Plus, Radio, X } from 'lucide-react';
 import { useKabmeet } from '../context/KabmeetContext';
+import { HomeSearchBar } from '../components/HomeSearchBar';
+import { LiveCountdown } from '../components/LiveCountdown';
+import { SessionCard } from '../components/SessionCard';
 import { KabmeetLoadingCard, KabmeetSignalPrism } from '../components/KabmeetLoader';
-import type { Community, KabSession } from '../types/kabmeet';
+import type { Community, KabSession, SessionContentType } from '../types/kabmeet';
 
 export function DiscoverPage() {
   const { apiFetch, navigate, role, user, pushToast, isSlowNetwork } = useKabmeet();
   const [sessions, setSessions] = useState<KabSession[]>([]);
+  const [catalogSessions, setCatalogSessions] = useState<KabSession[]>([]);
   const [communities, setCommunities] = useState<Community[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -31,6 +24,7 @@ export function DiscoverPage() {
   const [newDesc, setNewDesc] = useState('');
   const [newCommunity, setNewCommunity] = useState('indabax');
   const [newMode, setNewMode] = useState<'WATCH' | 'ROOM'>('WATCH');
+  const [newContentType, setNewContentType] = useState<'' | SessionContentType>('');
   const [startNow, setStartNow] = useState(true);
   const [creating, setCreating] = useState(false);
 
@@ -46,11 +40,15 @@ export function DiscoverPage() {
       if (selectedCommunity) params.set('community', selectedCommunity);
       if (selectedStatus !== 'ALL') params.set('status', selectedStatus);
 
+      const isUnfiltered = !query.trim() && !selectedCommunity && selectedStatus === 'ALL';
       const [sessRes, commRes] = await Promise.all([
         apiFetch<{ sessions: KabSession[] }>(`/api/sessions?${params.toString()}`),
         apiFetch<{ communities: Community[] }>('/api/communities'),
       ]);
       setSessions(sessRes.sessions);
+      if (isUnfiltered) {
+        setCatalogSessions(sessRes.sessions);
+      }
       setCommunities(commRes.communities);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not load sessions right now.');
@@ -70,11 +68,39 @@ export function DiscoverPage() {
       return;
     }
     try {
-      const res = await apiFetch<{ reminded: boolean }>(`/api/sessions/${sessionId}/remind`, {
-        method: 'POST',
-      });
+      const res = await apiFetch<{ reminded: boolean; attendeeCount?: number }>(
+        `/api/sessions/${sessionId}/remind`,
+        {
+          method: 'POST',
+        },
+      );
       setSessions((prev) =>
-        prev.map((s) => (s.id === sessionId ? { ...s, reminded: res.reminded } : s)),
+        prev.map((s) =>
+          s.id === sessionId
+            ? {
+                ...s,
+                reminded: res.reminded,
+                attendeeCount:
+                  typeof res.attendeeCount === 'number'
+                    ? res.attendeeCount
+                    : s.attendeeCount,
+              }
+            : s,
+        ),
+      );
+      setCatalogSessions((prev) =>
+        prev.map((s) =>
+          s.id === sessionId
+            ? {
+                ...s,
+                reminded: res.reminded,
+                attendeeCount:
+                  typeof res.attendeeCount === 'number'
+                    ? res.attendeeCount
+                    : s.attendeeCount,
+              }
+            : s,
+        ),
       );
       pushToast(
         res.reminded ? 'Reminder saved for this session.' : 'Reminder removed.',
@@ -96,13 +122,16 @@ export function DiscoverPage() {
           description: newDesc,
           communitySlug: newCommunity,
           mode: newMode,
+          ...(newContentType ? { contentType: newContentType } : {}),
           startNow,
         }),
       });
       setSessions((prev) => [res.session, ...prev]);
+      setCatalogSessions((prev) => [res.session, ...prev]);
       setScheduleOpen(false);
       setNewTitle('');
       setNewDesc('');
+      setNewContentType('');
       pushToast(
         startNow ? 'Session is live now on Discover.' : 'Upcoming session scheduled.',
         'success',
@@ -115,22 +144,37 @@ export function DiscoverPage() {
   };
 
   const liveFeature = sessions.find((s) => s.status === 'LIVE') ?? sessions[0];
+  const searchCatalog = catalogSessions.length > 0 ? catalogSessions : sessions;
 
   return (
     <div className="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
-      {/* Hero Banner with Frosted Dark Glass Card over real student photo */}
-      <section className="relative overflow-hidden rounded-xl border border-border bg-indaba-deep-green shadow-sm">
+      {/* Top Home Search Bar for Communities, Live Talks & Upcoming Sessions */}
+      <HomeSearchBar
+        query={query}
+        onQueryChange={setQuery}
+        communities={communities}
+        sessions={searchCatalog}
+        onSelectCommunity={(slug) => navigate('communities', { communitySlug: slug })}
+        onSelectSession={(session) =>
+          navigate(session.mode === 'ROOM' ? 'room' : 'watch', { sessionId: session.id })
+        }
+        onToggleRemind={handleToggleRemind}
+        onFilterStatus={(status) => setSelectedStatus(status)}
+      />
+
+      {/* Hero Banner with Frosted Dark Glass Card + Live Countdown */}
+      <section className="relative min-h-[340px] overflow-hidden rounded-xl border border-border bg-indaba-deep-green shadow-sm sm:min-h-[380px]">
         <img
           src="/src/assets/images/hero_indabax_campus_1795385728289.jpg"
           alt="Kabale University students collaborating during an IndabaX AI seminar"
           referrerPolicy="no-referrer"
-          className="h-[340px] w-full object-cover sm:h-[380px]"
+          className="absolute inset-0 h-full w-full object-cover"
         />
         <div
           aria-hidden="true"
-          className="absolute inset-0 bg-gradient-to-r from-night-forest/90 via-night-forest/65 to-night-forest/25"
+          className="absolute inset-0 bg-gradient-to-r from-night-forest/90 via-night-forest/70 to-night-forest/45"
         />
-        <div className="absolute inset-0 flex items-center p-5 sm:p-10">
+        <div className="relative z-10 flex min-h-[340px] flex-col justify-center gap-5 p-5 sm:min-h-[380px] sm:p-8 lg:grid lg:grid-cols-[minmax(0,1.25fr)_minmax(0,380px)] lg:items-center lg:gap-8 lg:p-10">
           <div className="max-w-xl rounded-xl border border-white/15 bg-night-forest/75 p-5 text-white backdrop-blur-md sm:p-7">
             <p className="text-xs font-medium uppercase tracking-[0.14em] text-sun-yellow">
               Kabale University · ai.kab.ac.ug/indabax
@@ -169,25 +213,37 @@ export function DiscoverPage() {
               )}
             </div>
           </div>
+
+          <LiveCountdown
+            sessions={searchCatalog}
+            loading={loading}
+            onToggleRemind={handleToggleRemind}
+            onSelectSession={(session) =>
+              navigate(session.mode === 'ROOM' ? 'room' : 'watch', {
+                sessionId: session.id,
+              })
+            }
+            onBrowseUpcoming={() => setSelectedStatus('UPCOMING')}
+          />
         </div>
       </section>
 
-      {/* Search & Filters */}
+      {/* Section Title & Filters */}
       <section className="mt-8 flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-        <div className="relative flex-1 md:max-w-md">
-          <Search
-            className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted"
-            strokeWidth={2}
-            aria-hidden="true"
-          />
-          <input
-            type="search"
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            placeholder="Search sessions, topics, or speakers..."
-            aria-label="Search sessions"
-            className="h-11 w-full rounded-full border border-border bg-surface pl-10 pr-4 text-sm text-foreground placeholder:text-muted"
-          />
+        <div className="flex flex-wrap items-center gap-3">
+          <h2 className="font-display text-2xl font-bold uppercase tracking-wide text-foreground">
+            Campus schedule &amp; streams
+          </h2>
+          {query.trim() && (
+            <button
+              type="button"
+              onClick={() => setQuery('')}
+              className="inline-flex h-8 items-center gap-1.5 rounded-full border border-border bg-surface px-3 text-xs font-medium text-muted hover:border-amber-gold hover:text-foreground"
+            >
+              <span>Filter: &ldquo;{query.trim()}&rdquo;</span>
+              <X className="h-3.5 w-3.5" strokeWidth={2} aria-hidden="true" />
+            </button>
+          )}
         </div>
 
         <div className="flex flex-wrap items-center gap-3">
@@ -285,146 +341,24 @@ export function DiscoverPage() {
         ) : (
           <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
             {sessions.map((session) => (
-              <article
+              <SessionCard
                 key={session.id}
-                className="flex flex-col overflow-hidden rounded-xl border border-border bg-surface transition-shadow duration-150 hover:shadow-md"
-              >
-                <div className="relative aspect-video w-full overflow-hidden bg-night-forest">
-                  <img
-                    src={session.thumbnailUrl}
-                    alt={session.title}
-                    referrerPolicy="no-referrer"
-                    className="h-full w-full object-cover"
-                  />
-                  <div
-                    aria-hidden="true"
-                    className="absolute inset-0 bg-gradient-to-t from-black/75 via-black/15 to-transparent"
-                  />
-
-                  <div className="absolute left-3 top-3 flex items-center gap-2">
-                    {session.status === 'LIVE' && (
-                      <span className="animate-live-badge inline-flex items-center gap-1.5 rounded-full bg-live-red px-2.5 py-1 text-[11px] font-bold uppercase tracking-wider text-white">
-                        <Radio className="h-3 w-3" strokeWidth={2.5} aria-hidden="true" />
-                        <span>Live</span>
-                      </span>
-                    )}
-                    {session.status === 'UPCOMING' && (
-                      <span className="inline-flex items-center gap-1 rounded-full bg-sun-yellow px-2.5 py-1 text-[11px] font-bold uppercase tracking-wider text-night-forest">
-                        <CalendarDays className="h-3 w-3" strokeWidth={2} aria-hidden="true" />
-                        <span>Upcoming</span>
-                      </span>
-                    )}
-                    {session.status === 'REPLAY' && (
-                      <span className="inline-flex items-center gap-1 rounded-full bg-night-forest/85 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wider text-mist">
-                        <Play className="h-3 w-3" strokeWidth={2} aria-hidden="true" />
-                        <span>Replay</span>
-                      </span>
-                    )}
-                  </div>
-
-                  {session.status === 'LIVE' && (
-                    <span className="absolute bottom-3 right-3 rounded-md bg-night-forest/85 px-2 py-0.5 font-mono text-xs font-medium tabular-nums text-white">
-                      {session.viewerCount} watching
-                    </span>
-                  )}
-                </div>
-
-                <div className="flex flex-1 flex-col p-5">
-                  {/* Quiet unboxed metadata line */}
-                  <div className="flex flex-wrap items-center gap-1.5 text-xs text-muted">
-                    <button
-                      type="button"
-                      onClick={() =>
-                        navigate('communities', { communitySlug: session.communitySlug })
-                      }
-                      className="font-semibold text-kab-blue hover:underline dark:text-signal-green"
-                    >
-                      {session.communityName}
-                    </button>
-                    <span aria-hidden="true">·</span>
-                    <span>{session.hostName}</span>
-                    <span aria-hidden="true">·</span>
-                    <span>{session.mode === 'ROOM' ? 'Interactive room' : 'Livestream'}</span>
-                  </div>
-
-                  <h2 className="mt-2 font-display text-xl font-semibold leading-snug text-foreground">
-                    {session.title}
-                  </h2>
-                  <p className="mt-1.5 line-clamp-2 flex-1 text-xs leading-relaxed text-muted">
-                    {session.description}
-                  </p>
-
-                  <div className="mt-5 flex items-center gap-2.5">
-                    {session.status === 'UPCOMING' ? (
-                      <>
-                        <button
-                          type="button"
-                          onClick={() => handleToggleRemind(session.id)}
-                          className={`inline-flex h-10 flex-1 items-center justify-center gap-1.5 whitespace-nowrap rounded-full text-xs font-semibold transition-colors ${
-                            session.reminded
-                              ? 'bg-sun-yellow text-night-forest'
-                              : 'border border-border bg-background text-foreground hover:border-amber-gold'
-                          }`}
-                        >
-                          {session.reminded ? (
-                            <BellRing className="h-4 w-4" strokeWidth={2} />
-                          ) : (
-                            <Bell className="h-4 w-4" strokeWidth={2} />
-                          )}
-                          <span>{session.reminded ? 'Reminder set' : 'Remind me'}</span>
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => navigate('watch', { sessionId: session.id })}
-                          className="inline-flex h-10 items-center justify-center whitespace-nowrap rounded-full border border-border px-4 text-xs font-medium text-muted hover:text-foreground"
-                        >
-                          Preview
-                        </button>
-                      </>
-                    ) : (
-                      <>
-                        <button
-                          type="button"
-                          onClick={() =>
-                            navigate(session.mode === 'ROOM' ? 'room' : 'watch', {
-                              sessionId: session.id,
-                            })
-                          }
-                          className="inline-flex h-10 flex-1 items-center justify-center gap-1.5 whitespace-nowrap rounded-full bg-signal-green px-4 text-xs font-semibold text-night-forest transition-transform duration-150 hover:brightness-95 active:scale-[0.98]"
-                        >
-                          {session.mode === 'ROOM' ? (
-                            <Video className="h-4 w-4" strokeWidth={2} />
-                          ) : (
-                            <Play className="h-4 w-4" strokeWidth={2} />
-                          )}
-                          <span>
-                            {session.status === 'REPLAY'
-                              ? 'Watch replay'
-                              : session.mode === 'ROOM'
-                                ? 'Join room'
-                                : 'Watch live'}
-                          </span>
-                        </button>
-                        {session.status === 'LIVE' && (
-                          <button
-                            type="button"
-                            onClick={() =>
-                              navigate(session.mode === 'ROOM' ? 'watch' : 'room', {
-                                sessionId: session.id,
-                              })
-                            }
-                            aria-label="Open interactive room"
-                            title={session.mode === 'ROOM' ? 'Watch view' : 'Open room grid'}
-                            className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-border text-muted hover:border-amber-gold hover:text-foreground"
-                          >
-                            <Users className="h-4 w-4" strokeWidth={2} />
-                          </button>
-                        )}
-                      </>
-                    )}
-                  </div>
-                </div>
-              </article>
+                session={session}
+                onJoin={(target) =>
+                  navigate(target.mode === 'ROOM' ? 'room' : 'watch', {
+                    sessionId: target.id,
+                  })
+                }
+                onOpenAlternateView={(target) =>
+                  navigate(target.mode === 'ROOM' ? 'watch' : 'room', {
+                    sessionId: target.id,
+                  })
+                }
+                onOpenCommunity={(slug) =>
+                  navigate('communities', { communitySlug: slug })
+                }
+                onToggleRemind={handleToggleRemind}
+              />
             ))}
           </div>
         )}
@@ -502,6 +436,24 @@ export function DiscoverPage() {
                     <option value="ROOM">Interactive Room (Meet style)</option>
                   </select>
                 </div>
+              </div>
+
+              <div>
+                <label htmlFor="sess-content-type" className="block text-xs font-medium">
+                  Content type
+                </label>
+                <select
+                  id="sess-content-type"
+                  value={newContentType}
+                  onChange={(e) => setNewContentType(e.target.value as '' | SessionContentType)}
+                  className="mt-1 h-11 w-full rounded-xl border border-border bg-background px-3 text-sm"
+                >
+                  <option value="">Auto-detect from title &amp; topic</option>
+                  <option value="ML_AI">ML &amp; AI</option>
+                  <option value="CODING_JAM">Coding jam / workshop</option>
+                  <option value="CLOUD_INFRA">Cloud &amp; infra</option>
+                  <option value="COMMUNITY_TALK">General community talk</option>
+                </select>
               </div>
 
               <div>

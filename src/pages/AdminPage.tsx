@@ -8,6 +8,7 @@ import {
 } from 'lucide-react';
 import { useKabmeet } from '../context/KabmeetContext';
 import { KabmeetLoadingCard } from '../components/KabmeetLoader';
+import { SiteFooterEditorForm } from '../components/SiteFooter';
 import type {
   AuthUser,
   Community,
@@ -27,14 +28,23 @@ const ALL_ROLES: UserRole[] = [
 ];
 
 export function AdminPage() {
-  const { apiFetch, navigate, role, user, pushToast, isSlowNetwork } = useKabmeet();
+  const {
+    apiFetch,
+    navigate,
+    role,
+    user,
+    pushToast,
+    isSlowNetwork,
+    siteFooter,
+    updateSiteFooter,
+  } = useKabmeet();
   const [users, setUsers] = useState<AuthUser[]>([]);
   const [communities, setCommunities] = useState<Community[]>([]);
   const [reports, setReports] = useState<ModerationReport[]>([]);
   const [auditLog, setAuditLog] = useState<RoleAuditEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [tab, setTab] = useState<'users' | 'communities' | 'reports' | 'audit'>('users');
+  const [tab, setTab] = useState<'users' | 'communities' | 'reports' | 'footer' | 'audit'>('users');
 
   const [commName, setCommName] = useState('');
   const [commSlug, setCommSlug] = useState('');
@@ -164,6 +174,7 @@ export function AdminPage() {
                 key: 'reports',
                 label: `Reports (${reports.filter((r) => r.status === 'OPEN').length})`,
               },
+              { key: 'footer', label: 'Site Footer' },
               { key: 'audit', label: 'Role Audit' },
             ] as const
           ).map((t) => (
@@ -389,6 +400,25 @@ export function AdminPage() {
                   </div>
                 ))
               )}
+            </div>
+          )}
+
+          {tab === 'footer' && (
+            <div className="max-w-2xl rounded-xl border border-border bg-surface p-6">
+              <div className="mb-4 border-b border-border pb-3">
+                <h2 className="font-display text-xl font-bold uppercase tracking-wide">
+                  Site Footer Links &amp; Contact Information
+                </h2>
+                <p className="mt-1 text-xs text-muted">
+                  Changes made here update the SiteFooter displayed at the bottom of the HomePage and across Kabmeet.
+                </p>
+              </div>
+              <SiteFooterEditorForm
+                initialValue={siteFooter}
+                onSave={async (next) => {
+                  await updateSiteFooter(next);
+                }}
+              />
             </div>
           )}
 
