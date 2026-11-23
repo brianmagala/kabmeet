@@ -1050,8 +1050,10 @@ async function startServer() {
       appType: 'spa',
     });
 
-    // HMR is disabled in this environment; prevent @vite/client from opening
-    // an unexposed WebSocket on port 24678 while keeping style/hot-context APIs intact.
+    // HMR is disabled in this environment; stub @vite/client's WebSocket with an
+    // immediately-open no-op socket so transport.connect completes without opening
+    // an unexposed port 24678 socket and plugins calling import.meta.hot.send()
+    // (such as vite-plugin-pwa) do not throw SendBeforeConnectError.
     app.get('/@vite/client', async (req, res, next) => {
       try {
         const result = await vite.transformRequest(req.originalUrl);
@@ -1059,15 +1061,10 @@ async function startServer() {
           next();
           return;
         }
-        const patched = result.code
-          .replace(
-            /createConnection:\s*\(\)\s*=>\s*new WebSocket\([^)]*\)/g,
-            'createConnection: () => ({ readyState: 1, addEventListener() {}, removeEventListener() {}, send() {}, close() {} })',
-          )
-          .replace(
-            /transport\.connect\(createHMRHandler\(handleMessage\)\);/,
-            '/* HMR disabled: WebSocket transport skipped */',
-          );
+        const patched = result.code.replace(
+          /createConnection:\s*\(\)\s*=>\s*new WebSocket\([^)]*\)/g,
+          'createConnection: () => ({ readyState: 1, OPEN: 1, addEventListener() {}, removeEventListener() {}, send() {}, close() {} })',
+        );
         res.setHeader('Content-Type', 'application/javascript; charset=utf-8');
         res.send(patched);
       } catch (err) {
