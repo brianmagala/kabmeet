@@ -68,6 +68,15 @@ If anything here is unclear or looks wrong, **say so in section 8 and stop**. Do
 - Pages: Discover, Watch, Room, Classes, Communities, Host Panel, Admin, Profile, Auth. Chat, polls, Q&A, reactions, notes/tasks/code pad, attendance, CSV export, PWA, Data Saver, offline indicator.
 - A custom loader (`KabmeetLoader.tsx`: Signal Prism, loading card, top network bar) is already wired into the app shell and pages.
 
+**Browser debug run, 2026-11-24 (Master, Playwright, desktop 1280px and phone 360px, two browsers in one room with fake cameras).**
+Worked: first-admin setup through the UI, sign-in, every top-nav page loads with no JavaScript errors, no horizontal overflow, phone bottom nav present, Watch page chat sends and appears, websocket connects, waiting room holds a member until the host admits them, a member who presses Cam is told to raise a hand first, host controls and People list show.
+Confirmed bugs:
+- **Video is not shared.** With both people in the room and the admin's camera on, the admin sees their own video, but the second person sees only a "KA, Video active" placeholder. Nothing reaches other browsers (Task 1).
+- **Refresh logs you out and the URL never changes** (always `/`). The sign-in token is kept in memory only, and routing is a state variable. So refresh, the Back button and shared links to a session all fail (Task 7).
+- **Websocket sign-in token is sent in the URL** (`/ws?sessionId=..&token=..`), which ends up in server and proxy logs. The server already accepts the token in a message; use that instead (Task 8).
+- **Fonts load from Google Fonts.** On campus bandwidth, or with Google blocked, headings fall back to Arial. Self-host Oswald, Poppins and JetBrains Mono (Task 8).
+Not tested: a real slow network, the loader stages, Classes attendance by a real student, Admin page actions, the PWA offline mode.
+
 **Problems found**
 1. **No real video between people.** `RoomPage.tsx` uses `getUserMedia` / `getDisplayMedia` for the person's *own* camera and screen only. There is no WebRTC, no media server, no signalling. Other participants appear as presence tiles, not video. The README's "Phase 3 done" overstates this. This is the biggest gap.
 2. **Data lives in a JSON file** (`data/`, via `server/store.ts`). Fine for a demo, not safe for real use (no concurrent writes, no backups, whole-file saves).
@@ -125,6 +134,16 @@ Recommended: keep the root app as the product. Move `docs/` content that is stil
 
 ### Task 6: Attendance you can trust (`OPEN`)
 Check how join/leave and active minutes are measured (`/api/classes/:id/attendance/ping`). Fix double counting from multiple tabs, and make the CSV export include join time, leave time, minutes and the student's university ID. Add a test.
+
+### Task 7: Real URLs and staying signed in (`OPEN`)
+1. Add URL routing (`/`, `/communities`, `/watch/:id`, `/room/:id`, `/classes`, `/host`, `/profile`, `/admin`, `/auth`) so refresh, Back and shared links work. The Nginx/Express fallback to `index.html` already exists.
+2. Keep people signed in across refresh. Preferred: an `httpOnly`, `SameSite=Lax`, `Secure` cookie session set by the login routes and read by `resolveAuthUser`, with CSRF protection on state-changing routes. Do not put the token in `localStorage`.
+3. Test: refresh keeps you signed in and on the same page; signing out clears it; a private class link opened signed out sends you to sign in, then back.
+
+### Task 8: Small fixes found in the debug run (`OPEN`)
+1. Websocket: authenticate with a first message, not the URL query. Keep working for the existing client during the change.
+2. Self-host the three font families (woff2 in `public/fonts`, `font-display: swap`) and remove the Google Fonts link. Keep real fallback stacks.
+3. Class, session, audit and message IDs: use `randomUUID()`.
 
 ### Later (Master will open when ready)
 Broadcast mode for 150+ viewers (HLS for the audience), live captions (Whisper), host analytics, notification emails, accessibility audit, load test with `k6`.
