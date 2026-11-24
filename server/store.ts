@@ -58,7 +58,9 @@ export interface KabmeetStoreData {
   siteFooter: SiteFooterConfig;
 }
 
-const DATA_DIR = path.resolve(process.cwd(), 'data');
+const DATA_DIR = process.env.KABMEET_DATA_DIR
+  ? path.resolve(process.env.KABMEET_DATA_DIR)
+  : path.resolve(process.cwd(), 'data');
 const STORE_PATH = path.join(DATA_DIR, 'kabmeet-store.json');
 
 export function createDefaultSiteFooter(): SiteFooterConfig {

@@ -120,8 +120,8 @@ Recommended: keep the root app as the product. Move `docs/` content that is stil
 4. Everything uses the tokens and respects `prefers-reduced-motion`.
 **Acceptance:** throttle the network in browser DevTools to Slow 3G and screenshot each stage; typecheck and build pass.
 
-### Task 5: Tests for the rules that matter (`OPEN`)
-Add Vitest (or the node test runner) for: register forces MEMBER; non-admin cannot change roles; MEMBER cannot publish video; private class refuses non-allowlisted users; setup code required for the first admin; rate limit returns 429. Add a `npm test` script and run it in CI (`.github/workflows`).
+### Task 5: Tests for the rules that matter (`VERIFIED`, done by the Master; extend it)
+`tests/api.test.ts` (run `npm test`, 7 tests passing) now covers: setup code, register forces MEMBER, members cannot change roles or create sessions/classes, private classes, sign-in rate limit; CI runs it from `.github/workflows/ci.yml`. Executors: add a test for every rule you add. Still to add: MEMBER cannot publish video (after Task 1), websocket role checks. Original list was: register forces MEMBER; non-admin cannot change roles; MEMBER cannot publish video; private class refuses non-allowlisted users; setup code required for the first admin; rate limit returns 429. Add a `npm test` script and run it in CI (`.github/workflows`).
 
 ### Task 6: Attendance you can trust (`OPEN`)
 Check how join/leave and active minutes are measured (`/api/classes/:id/attendance/ping`). Fix double counting from multiple tabs, and make the CSV export include join time, leave time, minutes and the student's university ID. Add a test.
@@ -170,4 +170,5 @@ Ready for review: yes / no
 
 ## 9. Master notes and decisions log
 
+- 2026-11-24: Phases A and B are on `main`. Phase C (tests plus root CI) added by the Master. Known small issue for any executor: class and session IDs use `Date.now()` and can collide; switch them to `randomUUID()` (and the same for audit/message IDs).
 - 2026-11-24: Master reviewed the repo, applied Phases A and B, and wrote this file. Open decision for Brian: Task 3 (keep one codebase at the root, recommended).
