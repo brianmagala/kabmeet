@@ -1,6 +1,8 @@
 {
   "name": "Kabmeet",
   "description": "Live session, virtual class, and community platform for Kabale University (ai.kab.ac.ug/indabax).",
-  "requestFramePermissions": ["camera", "microphone"],
-  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+  "requestFramePermissions": [
+    "camera",
+    "microphone"
+  ]
 }
