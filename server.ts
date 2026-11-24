@@ -1,7 +1,7 @@
 import 'dotenv/config';
 import { createServer } from 'node:http';
 import path from 'node:path';
-import { timingSafeEqual } from 'node:crypto';
+import { randomBytes, randomUUID, timingSafeEqual } from 'node:crypto';
 import express, { type NextFunction, type Request, type Response } from 'express';
 import { z } from 'zod';
 import { createServer as createViteServer } from 'vite';
@@ -103,9 +103,12 @@ function issueUserToken(userId: string): { accessToken: string; expiresAt: strin
   const raw = generateToken();
   const tokenHash = hashToken(raw);
   const expiresAt = new Date(Date.now() + SESSION_TTL_MS).toISOString();
-  store.state.tokens = store.state.tokens
-    .filter((t) => new Date(t.expiresAt) > new Date())
-    .slice(-200);
+  // Drop expired tokens, and keep at most 5 live sign-ins per person (oldest go first).
+  // The old global cap of 200 signed out other users once more than 200 people were online.
+  const live = store.state.tokens.filter((t) => new Date(t.expiresAt) > new Date());
+  const mine = live.filter((t) => t.userId === userId).slice(-4);
+  const others = live.filter((t) => t.userId !== userId);
+  store.state.tokens = [...others, ...mine];
   store.state.tokens.push({ tokenHash, userId, expiresAt });
   store.save();
   return { accessToken: raw, expiresAt };
@@ -126,6 +129,52 @@ function escapeCsvCell(value: string | number): string {
   return str;
 }
 
+// --- Basic protection: rate limits, one-time admin setup code, security headers ---
+const attempts = new Map<string, { count: number; resetAt: number }>();
+
+function rateLimit(name: string, max: number, windowMs: number) {
+  return (req: Request, res: Response, next: NextFunction) => {
+    const key = `${name}:${req.ip}`;
+    const now = Date.now();
+    const entry = attempts.get(key);
+    if (!entry || entry.resetAt < now) {
+      attempts.set(key, { count: 1, resetAt: now + windowMs });
+      next();
+      return;
+    }
+    entry.count += 1;
+    if (entry.count > max) {
+      res.setHeader('Retry-After', String(Math.ceil((entry.resetAt - now) / 1000)));
+      res.status(429).json({ message: 'Too many attempts. Please wait a few minutes and try again.' });
+      return;
+    }
+    next();
+  };
+}
+
+setInterval(() => {
+  const now = Date.now();
+  for (const [key, entry] of attempts) if (entry.resetAt < now) attempts.delete(key);
+}, 10 * 60 * 1000).unref();
+
+// The first admin must prove they control the server. Set ADMIN_SETUP_CODE in .env,
+// or read the one-time code printed in the server console on first start.
+let adminSetupCode: string | null = null;
+function getAdminSetupCode(): string {
+  if (!adminSetupCode) {
+    adminSetupCode = process.env.ADMIN_SETUP_CODE?.trim() || randomBytes(4).toString('hex');
+  }
+  return adminSetupCode;
+}
+
+function securityHeaders(_req: Request, res: Response, next: NextFunction) {
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  res.setHeader('X-Frame-Options', 'SAMEORIGIN');
+  res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
+  res.setHeader('Permissions-Policy', 'camera=(self), microphone=(self), display-capture=(self)');
+  next();
+}
+
 const registerSchema = z.object({
   email: z.string().trim().email().toLowerCase(),
   fullName: z.string().trim().min(2).max(100),
@@ -141,8 +190,9 @@ const loginSchema = z.object({
 
 const claimAdminSchema = z.object({
   email: z.string().trim().email().toLowerCase().default('admin@ai.kab.ac.ug'),
-  fullName: z.string().trim().min(2).max(100).default('Grace Tumusiime'),
+  fullName: z.string().trim().min(2).max(100).default('Kabmeet Admin'),
   password: z.string().min(8).max(128),
+  setupCode: z.string().trim().min(4).max(64),
 });
 
 const createSessionSchema = z.object({
@@ -208,7 +258,11 @@ const updateProfileSchema = z.object({
 async function startServer() {
   const app = express();
   app.set('trust proxy', 1);
+  app.use(securityHeaders);
   app.use(express.json({ limit: '1mb' }));
+  app.use('/api/auth/login', rateLimit('login', 10, 15 * 60 * 1000));
+  app.use('/api/auth/register', rateLimit('register', 10, 60 * 60 * 1000));
+  app.use('/api/auth/claim-admin', rateLimit('claim', 5, 15 * 60 * 1000));
 
   const httpServer = createServer(app);
   attachWebSocketServer(httpServer);
@@ -258,13 +312,17 @@ async function startServer() {
     }
     const parsed = claimAdminSchema.safeParse(req.body);
     if (!parsed.success) {
-      res.status(400).json({ message: 'Please provide a valid email, name, and 8+ character password.' });
+      res.status(400).json({ message: 'Please provide a valid email, name, setup code, and 8+ character password.' });
+      return;
+    }
+    if (!safeCompareString(parsed.data.setupCode, getAdminSetupCode())) {
+      res.status(403).json({ message: 'That setup code is not correct. Check the server console or ADMIN_SETUP_CODE.' });
       return;
     }
 
     const passwordHash = await hashPassword(parsed.data.password);
     const adminUser: StoredUser = {
-      id: `usr-admin-${Date.now()}`,
+      id: `usr-admin-${randomUUID()}`,
       email: parsed.data.email,
       universityId: 'KAB/ADMIN/001',
       fullName: parsed.data.fullName,
@@ -306,7 +364,7 @@ async function startServer() {
 
     const passwordHash = await hashPassword(parsed.data.password);
     const created: StoredUser = {
-      id: `usr-${Date.now()}`,
+      id: `usr-${randomUUID()}`,
       email: parsed.data.email,
       universityId: parsed.data.universityId ?? null,
       fullName: parsed.data.fullName,
@@ -1083,6 +1141,13 @@ async function startServer() {
 
   httpServer.listen(PORT, '0.0.0.0', () => {
     console.log(`Kabmeet server running on http://0.0.0.0:${PORT}`);
+    const needsAdmin =
+      !process.env.ADMIN_PASSCODE?.trim() &&
+      !store.state.adminClaimed &&
+      !store.state.users.some((u) => u.role === 'ADMIN');
+    if (needsAdmin) {
+      console.log(`First-run admin setup code: ${getAdminSetupCode()}  (enter it on the Setup Admin tab)`);
+    }
   });
 }
 

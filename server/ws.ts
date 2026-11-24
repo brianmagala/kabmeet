@@ -127,7 +127,7 @@ function sendError(ws: WebSocket, message: string): void {
 }
 
 export function attachWebSocketServer(httpServer: HttpServer): void {
-  const wss = new WebSocketServer({ server: httpServer, path: '/ws' });
+  const wss = new WebSocketServer({ server: httpServer, path: '/ws', maxPayload: 64 * 1024 });
 
   wss.on('connection', (ws, req) => {
     const reqUrl = new URL(req.url ?? '/ws', 'http://localhost');

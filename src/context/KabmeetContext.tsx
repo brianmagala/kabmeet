@@ -49,7 +49,7 @@ interface KabmeetContextValue {
     department?: string;
     password: string;
   }) => Promise<void>;
-  claimAdmin: (payload: { email: string; fullName: string; password: string }) => Promise<void>;
+  claimAdmin: (payload: { email: string; fullName: string; password: string; setupCode: string }) => Promise<void>;
   updateUserProfile: (payload: {
     fullName: string;
     nickname?: string | null;
@@ -376,7 +376,7 @@ export function KabmeetProvider({ children }: { children: React.ReactNode }) {
   );
 
   const claimAdmin = useCallback(
-    async (payload: { email: string; fullName: string; password: string }) => {
+    async (payload: { email: string; fullName: string; password: string; setupCode: string }) => {
       const res = await apiFetch<{
         user: AuthUser;
         accessToken: string;

@@ -12,6 +12,7 @@ export function AuthPage() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [fullName, setFullName] = useState('');
+  const [setupCode, setSetupCode] = useState('');
   const [universityId, setUniversityId] = useState('');
   const [department, setDepartment] = useState('Computer Science');
   const [submitting, setSubmitting] = useState(false);
@@ -35,8 +36,9 @@ export function AuthPage() {
       } else {
         await claimAdmin({
           email: email.trim() || 'admin@ai.kab.ac.ug',
-          fullName: fullName.trim() || 'Grace Tumusiime',
+          fullName: fullName.trim() || 'Kabmeet Admin',
           password,
+          setupCode,
         });
       }
     } catch (err) {
@@ -139,7 +141,7 @@ export function AuthPage() {
                 required
                 value={fullName}
                 onChange={(e) => setFullName(e.target.value)}
-                placeholder={tab === 'claim' ? 'Grace Tumusiime' : 'e.g. Brenda Natukunda'}
+                placeholder={tab === 'claim' ? 'Kabmeet Admin' : 'e.g. Brenda Natukunda'}
                 className="mt-1.5 h-11 w-full rounded-xl border border-border bg-background px-3.5 text-sm text-foreground"
               />
             </div>
@@ -159,6 +161,24 @@ export function AuthPage() {
               className="mt-1.5 h-11 w-full rounded-xl border border-border bg-background px-3.5 text-sm text-foreground"
             />
           </div>
+
+          {tab === 'claim' && (
+            <div>
+              <label htmlFor="auth-setup" className="block text-xs font-medium text-foreground">
+                Setup code
+              </label>
+              <input
+                id="auth-setup"
+                type="text"
+                required
+                autoComplete="off"
+                value={setupCode}
+                onChange={(e) => setSetupCode(e.target.value)}
+                placeholder="Shown in the server console on first start"
+                className="mt-1.5 h-11 w-full rounded-xl border border-border bg-background px-3.5 text-sm text-foreground"
+              />
+            </div>
+          )}
 
           {tab === 'register' && (
             <div className="grid gap-4 sm:grid-cols-2">
