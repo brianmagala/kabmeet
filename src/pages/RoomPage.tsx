@@ -30,6 +30,8 @@ import {
   useDoubleTapLike,
 } from '../components/EmojiReactions';
 import type { KabSession } from '../types/kabmeet';
+import { useRoomVideo } from '../video/useRoomVideo';
+import { RemoteVideo } from '../video/RemoteVideo';
 
 export function RoomPage() {
   const {
@@ -137,6 +139,14 @@ export function RoomPage() {
     return state.waitingRoom.some((w) => w.clientId === clientId);
   }, [state, clientId]);
 
+  // Real video: connect once we hold a seat in the room (never while waiting to be admitted).
+  const video = useRoomVideo({
+    sessionId: activeSessionId,
+    enabled: Boolean(session && myParticipant && !amWaiting),
+    audioOnly: dataSaver,
+    apiFetch,
+  });
+
   const explainMediaError = (err: unknown, deviceLabel: 'Camera' | 'Microphone'): string => {
     if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
       return `${deviceLabel} access requires a secure HTTPS browser context.`;
@@ -239,6 +249,14 @@ export function RoomPage() {
             throw constraintErr;
           }
         }
+        const publishError = await video.publish(stream.getVideoTracks()[0], 'camera');
+        if (publishError) {
+          stream.getTracks().forEach((t) => t.stop());
+          const msg = `Camera could not be shared: ${publishError}`;
+          setMediaNotice(msg);
+          pushToast(msg, 'error');
+          return;
+        }
         cameraStreamRef.current?.getTracks().forEach((t) => t.stop());
         cameraStreamRef.current = stream;
         if (!screenSharing) {
@@ -252,6 +270,7 @@ export function RoomPage() {
         pushToast(msg, 'error');
       }
     } else {
+      await video.unpublish('camera');
       cameraStreamRef.current?.getTracks().forEach((t) => t.stop());
       cameraStreamRef.current = null;
       if (!screenSharing) {
@@ -260,7 +279,7 @@ export function RoomPage() {
       setCamOn(false);
       emit('room:media_state', { camOn: false });
     }
-  }, [camOn, screenSharing, dataSaver, myParticipant?.isSpeaker, emit, pushToast]);
+  }, [camOn, screenSharing, dataSaver, myParticipant?.isSpeaker, emit, pushToast, video]);
 
   // Toggle Microphone independently of Camera
   const toggleMic = useCallback(async () => {
@@ -288,6 +307,14 @@ export function RoomPage() {
             audio: { echoCancellation: true, noiseSuppression: true },
             video: false,
           });
+          const publishError = await video.publish(stream.getAudioTracks()[0], 'microphone');
+          if (publishError) {
+            stream.getTracks().forEach((t) => t.stop());
+            const msg = `Microphone could not be shared: ${publishError}`;
+            setMediaNotice(msg);
+            pushToast(msg, 'error');
+            return;
+          }
           audioStreamRef.current = stream;
         } catch (err) {
           const msg = explainMediaError(err, 'Microphone');
@@ -301,13 +328,13 @@ export function RoomPage() {
         });
       }
     } else {
-      audioStreamRef.current?.getAudioTracks().forEach((t) => {
-        t.enabled = false;
-      });
+      await video.unpublish('microphone');
+      audioStreamRef.current?.getTracks().forEach((t) => t.stop());
+      audioStreamRef.current = null;
     }
     setMicOn(next);
     emit('room:media_state', { micOn: next, speaking: false });
-  }, [micOn, myParticipant?.isSpeaker, myParticipant?.mutedByHost, emit, pushToast]);
+  }, [micOn, myParticipant?.isSpeaker, myParticipant?.mutedByHost, emit, pushToast, video]);
 
   const handlePickSlideImage = useCallback(
     (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -371,10 +398,19 @@ export function RoomPage() {
           video: true,
           audio: false,
         });
+        const publishError = await video.publish(display.getVideoTracks()[0], 'screen');
+        if (publishError) {
+          display.getTracks().forEach((t) => t.stop());
+          const msg = `Screen could not be shared: ${publishError}`;
+          setMediaNotice(msg);
+          pushToast(msg, 'error');
+          return;
+        }
         screenStreamRef.current?.getTracks().forEach((t) => t.stop());
         screenStreamRef.current = display;
         setActiveVideoStream(display);
         display.getVideoTracks()[0].onended = () => {
+          void video.unpublish('screen');
           screenStreamRef.current = null;
           setScreenSharing(false);
           setActiveVideoStream(cameraStreamRef.current);
@@ -413,13 +449,14 @@ export function RoomPage() {
         }
       }
     } else {
+      await video.unpublish('screen');
       screenStreamRef.current?.getTracks().forEach((t) => t.stop());
       screenStreamRef.current = null;
       setActiveVideoStream(cameraStreamRef.current);
       setScreenSharing(false);
       emit('room:media_state', { screenSharing: false });
     }
-  }, [screenSharing, sharedSlideUrl, myParticipant?.isSpeaker, emit, pushToast]);
+  }, [screenSharing, sharedSlideUrl, myParticipant?.isSpeaker, emit, pushToast, video]);
 
   const toggleRaiseHand = useCallback(() => {
     if (!myParticipant) return;
@@ -646,7 +683,11 @@ export function RoomPage() {
             >
               {participants.map((p) => {
                 const isMe = p.clientId === clientId;
-                const isSpeakingNow = isMe ? speakingLocal || p.speaking : p.speaking;
+                const remote = isMe ? undefined : video.remoteVideo[p.userId];
+                const remoteTrack = remote?.screen ?? remote?.camera;
+                const isSpeakingNow = isMe
+                  ? speakingLocal || p.speaking
+                  : p.speaking || video.activeSpeakers.includes(p.userId);
                 return (
                   <div
                     key={p.clientId}
@@ -663,6 +704,12 @@ export function RoomPage() {
                         muted
                         playsInline
                         className={`h-full w-full object-cover ${!screenSharing ? '-scale-x-100' : ''}`}
+                      />
+                    ) : remoteTrack ? (
+                      <RemoteVideo
+                        track={remoteTrack}
+                        label={`${p.fullName} ${remote?.screen ? 'screen' : 'camera'}`}
+                        contain={Boolean(remote?.screen)}
                       />
                     ) : (isMe ? sharedSlideUrl : p.sharedSlideUrl) ? (
                       <img
@@ -730,6 +777,17 @@ export function RoomPage() {
               <ReactionBar compact collapsible onReact={(emoji) => sendReaction(emoji)} />
             </div>
           </div>
+
+          {video.status !== 'idle' && video.status !== 'connected' && (
+            <p
+              role="status"
+              className="rounded-xl border border-border bg-surface px-4 py-2 text-xs text-muted"
+            >
+              {video.status === 'connecting'
+                ? 'Connecting video...'
+                : video.message ?? 'Video is unavailable. Chat and the workspace still work.'}
+            </p>
+          )}
 
           {mediaNotice && (
             <div

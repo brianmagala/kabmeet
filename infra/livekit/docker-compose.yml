@@ -1,0 +1,10 @@
+# Run LiveKit next to Kabmeet. Host networking is the simplest way to expose the media ports.
+services:
+  livekit:
+    image: livekit/livekit-server:latest
+    command: --config /etc/livekit.yaml
+    network_mode: host
+    restart: unless-stopped
+    volumes:
+      - ./livekit.yaml:/etc/livekit.yaml:ro
+      - /etc/letsencrypt/live/turn.example.ac.ug:/certs:ro

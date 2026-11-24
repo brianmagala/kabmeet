@@ -1,0 +1,19 @@
+# Minimal LiveKit server config for Kabmeet. Replace the key pair before real use.
+# Generate one:  docker run --rm livekit/livekit-server generate-keys
+port: 7880
+rtc:
+  tcp_port: 7881          # media over TCP, used when UDP is blocked
+  port_range_start: 50000 # media over UDP
+  port_range_end: 50200
+  use_external_ip: true
+keys:
+  # "<api key>: <api secret>" must match LIVEKIT_API_KEY / LIVEKIT_API_SECRET in .env
+  REPLACE_API_KEY: REPLACE_WITH_A_LONG_RANDOM_SECRET_AT_LEAST_32_CHARS
+turn:
+  enabled: true
+  domain: turn.example.ac.ug  # DNS name pointing at this server
+  tls_port: 5349              # TURN over TLS; passes most campus firewalls
+  udp_port: 3478
+  # cert_file / key_file: your TLS certificate for the domain above
+  cert_file: /certs/fullchain.pem
+  key_file: /certs/privkey.pem

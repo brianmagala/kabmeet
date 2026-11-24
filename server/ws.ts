@@ -2,7 +2,9 @@ import type { Server as HttpServer } from 'node:http';
 import { WebSocket, WebSocketServer } from 'ws';
 import { hashToken, isStaffOrHost } from './auth';
 import { store, type StoredUser } from './store';
+import { getVideoProvider, type PublishRights } from './video';
 import type {
+  KabSession,
   RoomParticipant,
   SessionRealtimeState,
   UserRole,
@@ -46,6 +48,44 @@ function getWaitingMap(sessionId: string): Map<string, WaitingGuest> {
     waitingRooms.set(sessionId, map);
   }
   return map;
+}
+
+/**
+ * Staff, approved speakers and everyone in a private class skip the waiting room.
+ * Shared by the websocket (room:join) and the video token route, so both agree.
+ */
+export function isAutoAdmitted(user: StoredUser, session: KabSession | undefined): boolean {
+  return isStaffOrHost(user.role) || user.role === 'SPEAKER' || Boolean(session?.isPrivateClass);
+}
+
+export type RoomSeat =
+  | { state: 'waiting' }
+  | { state: 'admitted'; isSpeaker: boolean; mutedByHost: boolean };
+
+/** Where this person stands in the room right now. Null means they have not joined. */
+export function getRoomSeat(sessionId: string, userId: string): RoomSeat | null {
+  const seats = Array.from(getRoomParticipants(sessionId).values()).filter((p) => p.userId === userId);
+  if (seats.length > 0) {
+    return {
+      state: 'admitted',
+      isSpeaker: seats.some((p) => p.isSpeaker),
+      mutedByHost: seats.some((p) => p.mutedByHost),
+    };
+  }
+  const waiting = Array.from(getWaitingMap(sessionId).values()).some((g) => g.userId === userId);
+  return waiting ? { state: 'waiting' } : null;
+}
+
+/** What this person may send to the video room, worked out from their seat. */
+function publishRightsFor(sessionId: string, userId: string): PublishRights {
+  const seat = getRoomSeat(sessionId, userId);
+  if (!seat || seat.state !== 'admitted') return { canPublish: false, canUseMicrophone: false };
+  return { canPublish: seat.isSpeaker, canUseMicrophone: !seat.mutedByHost };
+}
+
+/** Tell the media server what this person may now do. Runs in the background. */
+function syncVideoRights(sessionId: string, userId: string): void {
+  void getVideoProvider().updateRights(sessionId, userId, publishRightsFor(sessionId, userId));
 }
 
 export function canUserAccessSession(sessionId: string, user: StoredUser | null): boolean {
@@ -127,7 +167,8 @@ function sendError(ws: WebSocket, message: string): void {
 }
 
 export function attachWebSocketServer(httpServer: HttpServer): void {
-  const wss = new WebSocketServer({ server: httpServer, path: '/ws', maxPayload: 64 * 1024 });
+  // Room slides are sent as images (up to 550 KB of text), so the limit sits just above that.
+  const wss = new WebSocketServer({ server: httpServer, path: '/ws', maxPayload: 640 * 1024 });
 
   wss.on('connection', (ws, req) => {
     const reqUrl = new URL(req.url ?? '/ws', 'http://localhost');
@@ -442,7 +483,7 @@ export function attachWebSocketServer(httpServer: HttpServer): void {
       if (event === 'room:join') {
         const participants = getRoomParticipants(sessionId);
         const waiting = getWaitingMap(sessionId);
-        const autoAdmit = isStaffOrHost(role) || role === 'SPEAKER' || Boolean(sess?.isPrivateClass);
+        const autoAdmit = isAutoAdmitted(actor, sess);
 
         const displayName = actor.nickname?.trim() || actor.fullName;
         if (!autoAdmit && payload.requireWaitingRoom !== false && !participants.has(meta.clientId)) {
@@ -473,6 +514,8 @@ export function attachWebSocketServer(httpServer: HttpServer): void {
           mutedByHost: false,
           speaking: false,
         });
+        // A returning person may still be connected to the media server with old rights.
+        syncVideoRights(sessionId, actor.id);
         broadcastToSession(sessionId, 'room:state', {
           participants: Array.from(participants.values()),
           waitingRoom: Array.from(waiting.values()),
@@ -576,6 +619,8 @@ export function attachWebSocketServer(httpServer: HttpServer): void {
             target.sharedSlideUrl = null;
             target.speaking = false;
           }
+          // Camera, microphone and screen only flow while the media server says yes.
+          syncVideoRights(sessionId, target.userId);
           broadcastToSession(sessionId, 'room:state', {
             participants: Array.from(participants.values()),
             waitingRoom: Array.from(getWaitingMap(sessionId).values()),
@@ -597,9 +642,15 @@ export function attachWebSocketServer(httpServer: HttpServer): void {
             target.micOn = false;
             target.speaking = false;
             target.mutedByHost = true;
+            // Take the microphone permission away so the person cannot simply unmute.
+            syncVideoRights(sessionId, target.userId);
           }
         } else {
+          const removed = participants.get(targetClientId);
           participants.delete(targetClientId);
+          if (removed && getRoomSeat(sessionId, removed.userId) === null) {
+            void getVideoProvider().removeParticipant(sessionId, removed.userId);
+          }
           const targetConn = Array.from(clients).find((c) => c.clientId === targetClientId);
           if (targetConn) {
             sendError(targetConn.ws, 'You were removed from the room by the host.');
@@ -621,6 +672,7 @@ export function attachWebSocketServer(httpServer: HttpServer): void {
         currentMod.endedForAll = true;
         if (sess) sess.status = 'REPLAY';
         store.save();
+        void getVideoProvider().closeRoom(sessionId);
         broadcastToSession(sessionId, 'room:ended', { endedBy: actor.fullName });
         return;
       }

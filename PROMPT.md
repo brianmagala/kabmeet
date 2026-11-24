@@ -99,7 +99,7 @@ Not tested: a real slow network, the loader stages, Classes attendance by a real
 
 ## 6. Task queue (kept by the Master)
 
-### Task 1: Real video behind an adapter (`OPEN`, highest value)
+### Task 1: Real video behind an adapter (`READY FOR REVIEW`, highest value)
 **Goal:** people in a Room see and hear each other, and screen shares reach everyone.
 **Approach:** self-hosted **LiveKit** (runs on university servers, free), behind a small interface so the provider can change.
 1. Create `server/video.ts` with `createRoomToken({ sessionId, user, canPublish })` using `livekit-server-sdk`. Role rules come from the existing server checks: HOST/MODERATOR/LECTURER/ADMIN/SPEAKER may publish; MEMBER may publish only after the host approves (raise hand); class rooms are allowed only for people on the allowlist.
@@ -183,7 +183,34 @@ Suggestions:
 Ready for review: yes / no
 ```
 
-(no reports yet)
+### Report: Task 1, 2026-11-24, Claude Sonnet 5.5 (Executor)
+Branch: task-1-livekit-video (from main 9a1dd14)
+Done:
+- `server/video.ts`: provider-neutral `VideoProvider` interface + `LiveKitProvider` + `NoVideoProvider`. One LiveKit room per session (`kabmeet-<sessionId>`), identity = user id (two tabs replace each other), 10-minute tokens, `canPublishData:false`. Admin calls (update rights, remove, close room) are best effort with a 4 s timeout so a dead media server never blocks a host click.
+- `POST /api/sessions/:id/video-token` in `server.ts` (auth, `canUserAccessSession`, rate limit 240/min). Order of checks: 404, 403 outsider, `{configured:false}` if no LiveKit, 409 session ended, 403 `WAITING` for waiting-room guests, 403 `NOT_IN_ROOM` for people who have not joined and are not auto-admitted. `canPublish` = host/moderator/lecturer/admin/SPEAKER, or a MEMBER only after `room:approve_speaker`. Host mute removes the MICROPHONE source (camera and screen stay).
+- `server/ws.ts`: exported `isAutoAdmitted`, `getRoomSeat`; approve/demote/mute call `updateParticipant` live, remove_peer calls `removeParticipant`, end_for_all calls `deleteRoom`.
+- BUG FIXED (from Phase A): websocket `maxPayload` was 64 KB but a shared slide can be about 550 KB, so sharing a slide dropped the connection. Now 640 KB, covered by a test.
+- Client: `src/video/useRoomVideo.ts` (connect, publish/unpublish, remote tracks per user id, active speakers, Data Saver = no video subscriptions, token retry) and `src/video/RemoteVideo.tsx`. `RoomPage.tsx` now publishes the existing camera/mic/screen captures and shows remote tiles, active-speaker ring, and a status line ("Connecting video..." or "Video is not configured on this server."). Waiting room, raise hand, host controls, shortcuts, slides, captions untouched. Turning the mic off now stops the mic track.
+- `.env.example` (LIVEKIT_*), `infra/livekit/livekit.yaml` + `docker-compose.yml`, `docs/DEPLOYMENT.md` (ports, TURN on campus).
+- `tests/video.test.ts` (11 tests) added to `npm test`: signed-out 401, unknown 404, outsider 403, enrolled student `canPublish:false`, NOT_IN_ROOM, 10-min expiry, WAITING then admit then approve then mute then demote sequence reading the token claims, self-approve refused, 300 KB slide over ws, ended session 409, and the app with no LiveKit returns `{configured:false}`.
+Half-done (and exactly where I stopped):
+- Tile grid still uses the existing 1/2/3-column reflow; no cap or paging at 12 tiles, and no pinned "screen share on stage" layout.
+- Data Saver only stops video downloads. It does not lower the quality of what a speaker sends (camera already uses 640x360 when Data Saver is on).
+Could not run / not verified:
+- Ran: `npx tsc --noEmit` clean, `npx vite build` ok, `npm test` 18/18 pass. Real e2e: local LiveKit 1.x dev server + built app + two headless Chromium with fake camera. The student saw the admin camera at 640x360. A non-speaker student pressing V published nothing.
+- NOT tested: microphone and screen-share end to end, two real machines, mobile browsers, TURN and campus firewalls, more than 2 people, reconnect after a network drop, a real wss:// proxy. My own e2e check that the admin sees their own tile was inconclusive (script selector issue); the screenshot of the student side is correct.
+Problems or things that look wrong elsewhere:
+- Moderation uses the global role, not session scope (a MODERATOR of one session is staff in all). Unverified allowlist identities: a class allowlist is matched on email text only.
+- A speaker approval is lost when the websocket reconnects (seat is rebuilt as non-speaker), so after a reconnect the person keeps a camera published until the media server is told; the next approve fixes it.
+- `package.json` still lists esbuild ^0.25.0 which conflicts with Vite 8 under npm; use `bun install`.
+- Task list numbers: I did not start Tasks 2 to 8. Task 3 was not touched (needs OPEN-APPROVED).
+Suggestions (to ease Master/Executor communication):
+- Put "How to run and test this task" (commands, ports, env vars) in each task so the executor can paste results straight into the report.
+- Let each task list a "Not in scope" line; I had to decide myself where to stop (tile cap, quality).
+- Add a short section "Known cross-cutting issues" (above) so each executor does not rediscover them. I left that list in this report; the Master can move it.
+- Give each report a one-line "Verify with" command. For this task: `npm test` and `npx tsc --noEmit && npx vite build`.
+- Ask executors to name any cross-task bug fix (like maxPayload) in the report heading so it is not lost.
+Ready for review: yes (with the untested items above)
 
 ---
 

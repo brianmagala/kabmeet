@@ -10,10 +10,18 @@ import {
   getAllowedRoutesForRole,
   hashPassword,
   hashToken,
+  isStaffOrHost,
   verifyPassword,
 } from './server/auth';
 import { store, type StoredUser } from './server/store';
-import { attachWebSocketServer, broadcastToSession, canUserAccessSession } from './server/ws';
+import { getVideoProvider } from './server/video';
+import {
+  attachWebSocketServer,
+  broadcastToSession,
+  canUserAccessSession,
+  getRoomSeat,
+  isAutoAdmitted,
+} from './server/ws';
 import type { AuthUser, UserRole } from './src/types/kabmeet';
 
 const PORT = Number(process.env.PORT ?? 3000);
@@ -263,6 +271,8 @@ async function startServer() {
   app.use('/api/auth/login', rateLimit('login', 10, 15 * 60 * 1000));
   app.use('/api/auth/register', rateLimit('register', 10, 60 * 60 * 1000));
   app.use('/api/auth/claim-admin', rateLimit('claim', 5, 15 * 60 * 1000));
+  // A whole class can share one campus IP, so this limit is generous.
+  app.use('/api/sessions/:id/video-token', rateLimit('video-token', 240, 60 * 1000));
 
   const httpServer = createServer(app);
   attachWebSocketServer(httpServer);
@@ -693,6 +703,72 @@ async function startServer() {
       });
     },
   );
+
+  // Join token for the video room. The server decides who may send video and sound;
+  // the browser only receives a token that says so.
+  app.post('/api/sessions/:id/video-token', requireAuth, async (req: AuthedRequest, res) => {
+    const user = req.authUser!;
+    const sessionId = String(req.params.id);
+    const session = store.state.sessions.find((s) => s.id === sessionId);
+    if (!session) {
+      res.status(404).json({ message: 'Session not found.' });
+      return;
+    }
+    if (!canUserAccessSession(sessionId, user)) {
+      res.status(403).json({
+        message: 'This virtual class is private. Only enrolled students and the lecturer can join.',
+      });
+      return;
+    }
+
+    const video = getVideoProvider();
+    if (!video.isConfigured()) {
+      // Not an error: the room still works for chat, hands and the workspace.
+      res.json({ configured: false, message: 'Video is not configured on this server.' });
+      return;
+    }
+    if (store.getModeration(sessionId).endedForAll) {
+      res.status(409).json({ message: 'This session has ended.' });
+      return;
+    }
+
+    // People in the waiting room get no video until the host lets them in.
+    const seat = getRoomSeat(sessionId, user.id);
+    if (seat?.state === 'waiting') {
+      res.status(403).json({ code: 'WAITING', message: 'The host has not let you in yet.' });
+      return;
+    }
+    if (!seat && !isAutoAdmitted(user, session)) {
+      res.status(403).json({ code: 'NOT_IN_ROOM', message: 'Join the room first, then your video will connect.' });
+      return;
+    }
+
+    // Hosts and speakers may publish. A member may publish only after the host approves them.
+    const admitted = seat?.state === 'admitted' ? seat : null;
+    const canPublish = admitted ? admitted.isSpeaker : isStaffOrHost(user.role) || user.role === 'SPEAKER';
+    const canUseMicrophone = !(admitted && admitted.mutedByHost);
+
+    try {
+      const issued = await video.createRoomToken({
+        sessionId,
+        userId: user.id,
+        displayName: user.nickname?.trim() || user.fullName,
+        canPublish,
+        canUseMicrophone,
+      });
+      res.json({
+        configured: true,
+        url: issued.url,
+        token: issued.token,
+        expiresAt: issued.expiresAt,
+        identity: user.id,
+        canPublish,
+      });
+    } catch (err) {
+      console.error('[kabmeet] Video: could not create a join token:', err);
+      res.status(502).json({ message: 'Video is not available right now. Chat still works.' });
+    }
+  });
 
   app.post('/api/sessions/:id/remind', requireAuth, (req: AuthedRequest, res) => {
     const id = String(req.params.id);
