@@ -1,21 +1,28 @@
 # PROMPT.md: Kabmeet shared work file
 
-This file is the communication link between the **Master** (Claude, planner and approver), any **Executor** model that Brian brings in, and **Brian** (project owner, validator).
+The communication link between the **Master** (Claude: planner, reviewer, approver), any **Executor** model Brian brings in, and **Brian** (project owner, the gate).
 
-Brian starts every round by telling an executor: *"Read PROMPT.md, analyze it as well as you can, and do the next open task."* Nothing runs unless Brian says so.
+## 0. Executor quick start (read this first)
+
+1. Read this whole file. Then read section 5 (status) and section 6 (known issues), because they save you from rediscovering things.
+2. Take the **first task in the priority order of section 7 that is `OPEN`**. One task per round.
+3. Work on a branch named `task-<number>-<short-name>`. **Never push to `main`.** The Master merges.
+4. Install with `bun install`. Check with `npx tsc --noEmit && npx vite build && npm test`.
+5. Write your report in section 10 using the template there. Change only the status word of your own task.
+6. If something here is unclear, wrong, or conflicts with the code, **say so in your report and stop**. Do not guess on security, roles or data.
 
 ---
 
 ## 1. How this file works
 
-1. **Master** writes tasks in section 6 and keeps section 5 (status) current.
-2. **Executor** reads this whole file, picks the first task marked `OPEN`, works on it on its own branch (`task-<number>-<short-name>`), then writes its report in section 8. It does **not** edit sections 1 to 7, except to change the status word of its own task.
-3. **Master** reads section 8, checks the work against the acceptance list (section 7), then marks the task `VERIFIED`, `REWORK` (with reasons) or `REJECTED`, and adds the next tasks.
-4. **Brian** is the gate. A task is finished only when the Master marks it `VERIFIED`.
+1. **Master** writes tasks (section 7) and keeps status (section 5) current.
+2. **Executor** does the task and reports (section 10). Executors do not edit sections 0 to 9.
+3. **Master** re-runs the checks itself (never trusts the report alone), then marks the task `VERIFIED`, `REWORK` (with reasons) or `REJECTED`, merges, and adds follow-ups.
+4. **Brian** starts every round by telling a model: *"Read PROMPT.md, analyze it as well as you can, and do the next open task."* Nothing runs unless Brian says so.
 
-Status words: `OPEN` > `IN PROGRESS` > `READY FOR REVIEW` > `VERIFIED` (or `REWORK`).
+Status words: `OPEN` > `IN PROGRESS` > `READY FOR REVIEW` > `VERIFIED` (or `REWORK`). A task that needs Brian's decision first is `NEEDS DECISION` and must not be started.
 
-If anything here is unclear or looks wrong, **say so in section 8 and stop**. Do not guess on security, roles or data.
+**Every task below has the same four lines**, so reports can be checked quickly: *Goal*, *How to run and test*, *Not in scope*, *Verify with*. If you finish something outside the task (for example a bug you had to fix), name it in your report heading.
 
 ---
 
@@ -23,7 +30,7 @@ If anything here is unclear or looks wrong, **say so in section 8 and stop**. Do
 
 **Kabmeet** is the live-session platform of the Kabale AI Club / IndabaX site (`ai.kab.ac.ug/indabax`), hosted on the university's own servers.
 
-**Problem:** students, lecturers and clubs run their sessions on Google Meet or Zoom, so people leave our site and have to juggle links and logins.
+**Problem:** students, lecturers and clubs run their sessions on Google Meet or Zoom, so people leave our site and juggle links and logins.
 **Solution:** one site, one login, where people can:
 - find live sessions (YouTube Live style: live list, watch page, top chat, stickers, polls, Q&A),
 - join interactive rooms (Google Meet style: camera, mic, screen share, raise hand, host controls, waiting room),
@@ -33,143 +40,236 @@ If anything here is unclear or looks wrong, **say so in section 8 and stop**. Do
 
 **Standing rule from Brian:** never mention or compare with any existing university e-learning platform, in code, comments, UI text or docs. Treat them as if they never existed.
 
-**Quality bar:** it must look and feel human-made, not generated. No filler copy, no lorem ipsum, no generic template look. Real Kabale content, real labels.
+**Quality bar:** it must look and feel human-made, not generated. No filler copy, no lorem ipsum, no generic template look. Real Kabale content, real labels. Aim for the best result, then check it.
 
 ---
 
 ## 3. Design rules (do not break)
 
-- **Colors:** use the CSS tokens only, never raw hex inside components. Palette: Indaba Deep Green `#065A4B`, Signal Green `#00E676`, KAB Blue `#0072BB`, Sun Yellow `#F5EC1E`, Amber Gold `#F6A623`, Live Red `#E5484D` (LIVE badge only), Night Forest `#0A1F1A`, Mist `#F2F7F5`, Line `#D5E3DE`. These hex values were read by eye from screenshots, so verify against the live pages in DevTools and correct the tokens if they differ.
-- **Fonts:** Oswald for headings, Poppins for body.
+- **Colors:** CSS tokens only, never raw hex inside components. Indaba Deep Green `#065A4B`, Signal Green `#00E676`, KAB Blue `#0072BB`, Sun Yellow `#F5EC1E`, Amber Gold `#F6A623`, Live Red `#E5484D` (LIVE badge only), Night Forest `#0A1F1A`, Mist `#F2F7F5`, Line `#D5E3DE`. These hex values were read by eye from screenshots; verify against the live pages in DevTools and fix the tokens if they differ.
+- **Fonts:** Oswald for headings, Poppins for body, JetBrains Mono for numbers and code.
 - **Shape:** pill buttons, 12px cards, 8px spacing grid. Icons: `lucide-react`, one stroke width.
-- **No emojis in the UI chrome** (see `kabmeet/.github/copilot-instructions.md`). The one exception is the chat reaction and sticker set, which is content, not chrome.
+- **Emoji policy (replaces the old "no emojis" rule):** emojis are welcome as *content and personality*: reactions, stickers, greetings, empty states, achievement badges, chat. They are **not** used as icons in navigation, buttons, form labels, headings, tables, errors or anything about security. At most one emoji per message or label, and always paired with words. Every emoji that carries meaning has an `aria-label` and a tooltip.
+- **Motion policy:** motion must help (show state, give feedback, guide the eye), never decorate for its own sake. Use only `transform` and `opacity`. Fast: 120 to 220 ms for feedback, up to 400 ms for entrances. Hover effects live inside `@media (hover: hover)`; touch devices get a press state instead. Respect `prefers-reduced-motion` (replace movement with a fade or nothing). Data Saver turns decorative motion off.
 - **Never rely on color alone.** Pair status colors with a word or an icon.
-- **Both light and dark theme** must work. Respect `prefers-reduced-motion`.
-- **Phone first:** must work at 360px width. Many users are on phones and weak networks.
+- **Both light and dark theme** must work.
+- **Phone first:** works at 360px width. Many users are on phones and weak networks.
 
 ## 4. Engineering rules (do not break)
 
-- Every role and private-class check is enforced **on the server** (`server.ts`, `server/ws.ts`). The client only hides buttons.
+- Every role and private-class check is enforced **on the server** (`server.ts`, `server/ws.ts`, `server/video.ts`). The client only hides buttons.
 - No secrets in git. `.env` stays out of the repo.
 - Validate every input with `zod` on the server. Cap sizes.
-- Small commits, one purpose each. Message format: `Phase X: what changed`.
-- Before you report: `npx tsc --noEmit` and `npx vite build` must pass, and you must have run the feature yourself. Say in section 8 what you ran, and what you could **not** run.
-- Install with `bun install` (npm hits a peer-dependency conflict).
+- Small commits, one purpose each. Message format: `Task N: what changed`.
+- Add a test for every rule you add (`tests/`, run by `npm test`, also run by CI).
+- Before you report: `npx tsc --noEmit`, `npx vite build` and `npm test` pass, and you ran the feature yourself in a browser when it has a screen. State what you ran and what you could **not** run.
 - Do not claim something works if you did not run it. Half-done is fine; write it down honestly.
 
 ---
 
 ## 5. Status (kept by the Master)
 
-**Reviewed on 2026-11-24 (Master).** I read the server (`server.ts`, `server/auth.ts`), the auth/session paths, the websocket layer's role checks, the page and component list, and ran typecheck and build (both pass). I did not read every page line by line, and I did not click through the UI in a browser.
+**Last updated:** 2026-11-25 (Master).
 
-**What exists and looks sound**
-- Passwords hashed with scrypt, sign-in tokens stored hashed, zod validation on routes, role checks in the websocket for host/staff actions.
-- Pages: Discover, Watch, Room, Classes, Communities, Host Panel, Admin, Profile, Auth. Chat, polls, Q&A, reactions, notes/tasks/code pad, attendance, CSV export, PWA, Data Saver, offline indicator.
-- A custom loader (`KabmeetLoader.tsx`: Signal Prism, loading card, top network bar) is already wired into the app shell and pages.
+**On `main` now**
+- Security hardening: first-admin setup code, rate limits, security headers, safer tokens.
+- Cleanup: Kabmeet `.env.example`, package name, unused SDK removed.
+- Tests: `npm test` (18 tests, all pass) and a root CI workflow (`.github/workflows/ci.yml`; check the Actions tab on GitHub to confirm it runs green).
+- **Real video (Task 1, verified):** camera, microphone and screen share between people, through self-hosted LiveKit behind an adapter. Without LiveKit settings the Room still works for chat, hands and the workspace.
 
-**Browser debug run, 2026-11-24 (Master, Playwright, desktop 1280px and phone 360px, two browsers in one room with fake cameras).**
-Worked: first-admin setup through the UI, sign-in, every top-nav page loads with no JavaScript errors, no horizontal overflow, phone bottom nav present, Watch page chat sends and appears, websocket connects, waiting room holds a member until the host admits them, a member who presses Cam is told to raise a hand first, host controls and People list show.
-Confirmed bugs:
-- **Video is not shared.** With both people in the room and the admin's camera on, the admin sees their own video, but the second person sees only a "KA, Video active" placeholder. Nothing reaches other browsers (Task 1).
-- **Refresh logs you out and the URL never changes** (always `/`). The sign-in token is kept in memory only, and routing is a state variable. So refresh, the Back button and shared links to a session all fail (Task 7).
-- **Websocket sign-in token is sent in the URL** (`/ws?sessionId=..&token=..`), which ends up in server and proxy logs. The server already accepts the token in a message; use that instead (Task 8).
-- **Fonts load from Google Fonts.** On campus bandwidth, or with Google blocked, headings fall back to Arial. Self-host Oswald, Poppins and JetBrains Mono (Task 8).
-Not tested: a real slow network, the loader stages, Classes attendance by a real student, Admin page actions, the PWA offline mode.
+**Verified working by the Master's own browser runs** (Playwright, fake cameras, real LiveKit 1.9.4 server): first-admin setup; sign-in; every page loads without script errors; no sideways scrolling on the Discover page at 360px; chat and websocket; waiting room; a student who is not approved publishes nothing; the student sees the admin's camera (640x360) and hears live audio; the admin's screen share reaches the student (1280x720); after the host approves a student as speaker *while connected*, the student's camera reaches the admin.
 
-**Problems found**
-1. **No real video between people.** `RoomPage.tsx` uses `getUserMedia` / `getDisplayMedia` for the person's *own* camera and screen only. There is no WebRTC, no media server, no signalling. Other participants appear as presence tiles, not video. The README's "Phase 3 done" overstates this. This is the biggest gap.
-2. **Data lives in a JSON file** (`data/`, via `server/store.ts`). Fine for a demo, not safe for real use (no concurrent writes, no backups, whole-file saves).
-3. **Two codebases.** The working app is at the repo root. The `kabmeet/` folder is a monorepo skeleton (mostly READMEs and config, a placeholder Next.js app) that nothing uses. It misleads readers and the README describes both as real.
-4. **README claims more than is built** (all phases ticked).
-5. The first-admin screen let whoever reached a fresh server first become admin; there was no rate limiting on sign-in; IDs were `Date.now()` based; the sign-in token list was capped at 200 across all users. (Fixed in Phase A, below.)
-6. Emoji rule in `copilot-instructions.md` and the emoji-heavy README disagree (see rule in section 3).
+**Known not tested:** two real machines, phones, campus firewalls and TURN, more than two people, reconnect after a network drop, a real `wss://` reverse proxy, a real slow network, attendance by a real student, Admin page actions, PWA offline mode.
 
-**Done so far (branches)**
-- `phase-a-hardening`: first-admin setup now needs a one-time setup code (printed on first start, or `ADMIN_SETUP_CODE`); rate limits on sign-in, register and admin setup; security headers; random IDs; per-user token cap; websocket message size limit; placeholder person name removed from the admin form. Tested: wrong code is refused, right code works, the 11th sign-in attempt returns 429.
-- `phase-b-hygiene` (on top of A): `.env.example` rewritten for Kabmeet (it was an AI Studio template), package renamed from `react-example` to `kabmeet`, unused Gemini SDK and its capability flag removed.
+**Biggest remaining problems**
+1. Refresh signs you out and the address never changes (Task 7).
+2. Data is stored in a JSON file (Task 2).
+3. Two codebases in one repo; README claims more than is built (Task 3).
+4. The site feels plain: 8 reactions, few emojis, little hover feedback, loaders not matched to moments (Tasks 4, 9, 10).
 
-**Not pushed yet.** At the time of writing, the Master's GitHub access for this repo was refused (403), so both branches exist only in the Master's working copy until Brian fixes the GitHub connection. If you can see this file, the branches were pushed; check `git branch -a`.
+## 6. Known cross-cutting issues (so nobody rediscovers them)
 
-**Half-baked / still to do**
-- Everything in section 6.
-- Loader kit: a separate, richer set (Beacon, Thread, pill pulse, signal bars, top thread, shimmer, hop dots, lens) was designed in the Kabmeet Loading Kit page. It is not yet compared with `KabmeetLoader.tsx`; see Task 4.
+- Moderation uses the **global** role: a MODERATOR of one session counts as staff in all sessions.
+- A private-class allowlist is matched on **email text only**; there is no check that the person owns that email.
+- A speaker approval is lost when the person's websocket reconnects (the seat is rebuilt as non-speaker). The server updates LiveKit rights only on the next approve.
+- When a websocket closes, the person's video connection is not closed from the server side (only host removal and "end for all" do that).
+- The websocket token is in the URL query (Task 8).
+- Class, session, audit and message IDs still use `Date.now()` in places (Task 8).
+- `npm install` fails on a peer-dependency conflict (esbuild vs Vite 8). Use `bun install`.
+- The browser LiveKit client (2.x) tries a newer signalling path first; against LiveKit server 1.9.4 it logs one harmless 404 and one WebSocket warning, then connects. Not a bug; use a current server in production and pin the version in `infra/livekit/docker-compose.yml` (now `v1.9.4`).
+- Google Fonts are loaded from the internet (Task 8).
 
 ---
 
-## 6. Task queue (kept by the Master)
+## 7. Task queue and priority order (kept by the Master)
 
-### Task 1: Real video behind an adapter (`READY FOR REVIEW`, highest value)
-**Goal:** people in a Room see and hear each other, and screen shares reach everyone.
-**Approach:** self-hosted **LiveKit** (runs on university servers, free), behind a small interface so the provider can change.
-1. Create `server/video.ts` with `createRoomToken({ sessionId, user, canPublish })` using `livekit-server-sdk`. Role rules come from the existing server checks: HOST/MODERATOR/LECTURER/ADMIN/SPEAKER may publish; MEMBER may publish only after the host approves (raise hand); class rooms are allowed only for people on the allowlist.
-2. Add `POST /api/sessions/:id/video-token` (auth required, uses `canUserAccessSession`). Short expiry (10 minutes).
-3. In `RoomPage.tsx`, replace local-only tiles with LiveKit tracks (`livekit-client`): grid for up to ~12 visible tiles, active-speaker highlight, mic/cam/screen-share toggles wired to real tracks. Keep the existing waiting room, raise-hand and host controls working (they live in `server/ws.ts`).
-4. Add `LIVEKIT_URL`, `LIVEKIT_API_KEY`, `LIVEKIT_API_SECRET` to `.env.example`. If they are not set, the Room must say clearly "Video is not configured on this server" and still allow chat. No crash.
-5. Add `infra/livekit/` with a minimal `livekit.yaml` and a compose snippet. Document the ports and the TURN requirement for campus networks in `docs/DEPLOYMENT.md`.
-6. Data Saver: when on, subscribe to audio only (and low quality video if turned on).
-**Acceptance:** two browsers on two machines see each other and a shared screen; a MEMBER cannot publish before approval (test by calling the token endpoint as a member and confirming `canPublish: false`); tokens are refused for people outside a private class; app still runs with no LiveKit configured; typecheck and build pass.
-**Also:** report honestly what you could not test (for example real campus network conditions).
+**Order of work:** 7 > 8 > 1b > 4 > 9 > 10 > 6 > 2 > 3 (3 needs Brian). Reason: fix what hurts every user first (refresh, fonts), then polish video, then the feel of the site, then trustworthy data.
+
+| Task | Name | Status |
+|---|---|---|
+| 1 | Real video behind an adapter | `VERIFIED` |
+| 1b | Video polish and safety follow-ups | `OPEN` |
+| 2 | Replace the JSON file store | `OPEN` |
+| 3 | One codebase, honest README | `NEEDS DECISION` |
+| 4 | Loading kit and slow-network stages | `OPEN` |
+| 5 | Tests for the rules that matter | `VERIFIED` (extend with every task) |
+| 6 | Attendance you can trust | `OPEN` |
+| 7 | Real URLs and staying signed in | `OPEN` |
+| 8 | Small fixes from the debug run | `OPEN` |
+| 9 | Campus emoji pack, stickers and microcopy | `OPEN` |
+| 10 | A site that feels alive: hover and motion polish | `OPEN` |
+
+---
+
+### Task 1: Real video behind an adapter (`VERIFIED`)
+Done by an Executor, verified by the Master on 2026-11-25. See the report in section 10 and the Master's review in section 9.
+
+### Task 1b: Video polish and safety follow-ups (`OPEN`)
+**Goal:** close the gaps the review found in Task 1.
+1. **Stop the retry loop.** In `src/video/useRoomVideo.ts`, when the token route answers 403 (not in room, removed) or 409 (session ended), stop retrying and show a clear message ("You were removed from this room" / "This session has ended"). Today it retries every 3 to 5 seconds forever.
+2. **Closing the page or websocket closes video.** In `server/ws.ts` on websocket close, if that person has no other seat in the room, call `removeParticipant`.
+3. **Keep speaker approval across a websocket reconnect:** remember `isSpeaker` and `mutedByHost` per user per session (in memory is fine) and restore them on `room:join`; call `syncVideoRights`.
+4. **Layout:** cap visible tiles at 12 (active speakers first, "+N more" tile), and when someone shares their screen, pin it large with the camera tiles in a strip. Keep the phone layout one column.
+5. **No LiveKit configured:** the Cam button should still show the person's own preview and say once "Video is not set up, so others cannot see you." (today it shows an error and refuses).
+6. **Hook hygiene:** `useRoomVideo` returns a new object each render, so `useCallback` lists containing `video` re-create every render. Memoize the returned object.
+7. **Data Saver, sender side:** when on, publish camera at most 360p and 15 fps.
+8. `docs/DEPLOYMENT.md`: add a section for putting LiveKit behind Nginx or Caddy with `wss://`, plus the ports that must be open.
+**How to run and test:** `bun install`; run LiveKit (`infra/livekit/docker-compose.yml`, or `livekit-server --dev`); start the app with `LIVEKIT_URL=ws://127.0.0.1:7880 LIVEKIT_API_KEY=devkey LIVEKIT_API_SECRET=secret npx tsx server.ts`; use two Chromium windows with `--use-fake-device-for-media-stream`.
+**Not in scope:** HLS broadcast mode, recording, captions.
+**Verify with:** `npm test`; `npx tsc --noEmit && npx vite build`; screenshots of 1, 5 and 14 participants and of a pinned screen share.
 
 ### Task 2: Replace the JSON file store (`OPEN`)
 **Goal:** safe, real storage.
-1. Pick **SQLite via Prisma** first (no extra server to run), written so that switching the provider to PostgreSQL is one line.
-2. Move users, tokens, sessions, communities, attendance, reports, audit log. Keep chat/polls in memory with periodic flush if simpler, but attendance and audit must be durable.
-3. Write a one-time import from the existing `data/` JSON so nothing is lost.
+1. **SQLite via Prisma** first (no extra server), written so switching the provider to PostgreSQL is one line.
+2. Move users, tokens, sessions, communities, attendance, reports and the audit log. Chat and polls may stay in memory with periodic flush, but attendance and audit must be durable.
+3. One-time import from the existing `data/` JSON so nothing is lost.
 4. Keep the same API shapes so the client does not change.
-**Acceptance:** restart keeps data; two simultaneous registrations both succeed; typecheck and build pass; migration steps in `docs/DEPLOYMENT.md`.
+**How to run and test:** copy a sample `data/` folder, run the import, restart the server, confirm the data is still there; register two people at once.
+**Not in scope:** moving chat history to the database, search.
+**Verify with:** `npm test` (add a restart-keeps-data test); migration steps written in `docs/DEPLOYMENT.md`.
 
-### Task 3: Repo cleanup, one codebase (`OPEN`, needs Brian's decision first)
-Recommended: keep the root app as the product. Move `docs/` content that is still true to the root `docs/`, delete the unused `kabmeet/` skeleton, and rewrite the README so every claim matches what is built (tick only what runs). If Brian prefers the monorepo, the Master will write a migration plan first. **Do not start this task until the Master changes it to `OPEN-APPROVED`.**
+### Task 3: One codebase, honest README (`NEEDS DECISION`)
+Recommended to Brian: keep the root app as the product, delete the unused `kabmeet/` skeleton, move any still-true docs into the root `docs/`, and rewrite the README so every claim matches what runs. If Brian prefers the monorepo, the Master writes a migration plan first. **Do not start until the Master sets `OPEN`.**
 
-### Task 4: Loading kit alignment (`OPEN`)
-1. Read `src/components/KabmeetLoader.tsx` and the hooks in `KabmeetContext.tsx` that decide slow requests.
-2. Make the staging match these rules: nothing under 0.4 s; loader after 0.4 s; plain notice "Your connection is slow. Still trying." at 3 s; at 8 s offer audio only / Data Saver; at 20 s stop, show a Try again button and keep the existing content; offline shows a banner and queues chat sends.
-3. Add the seven moment-specific loaders where they fit: Beacon (page), Thread (joining a session), pill pulse (buttons, blocks double clicks), signal bars with a text label (room header), top thread (route change), card shimmer (lists), hop dots (chat sending), lens (camera starting). Keep or retire the existing Signal Prism, but do not show two different "main" loaders.
-4. Everything uses the tokens and respects `prefers-reduced-motion`.
-**Acceptance:** throttle the network in browser DevTools to Slow 3G and screenshot each stage; typecheck and build pass.
+### Task 4: Loading kit and slow-network stages (`OPEN`)
+**Goal:** the site never looks frozen, on a bad network or on a click.
+1. Read `src/components/KabmeetLoader.tsx` and the slow-request logic in `src/context/KabmeetContext.tsx`.
+2. Make the stages match: **nothing under 0.4 s; loader after 0.4 s; at 3 s the notice "Your connection is slow. Still trying."; at 8 s offer Data Saver / audio only; at 20 s stop, show Try again, and keep the content already on the page; offline shows a banner and queues chat sends.** A reference hook: `useLoadingStage(isLoading)` with timers `[400, 3000, 8000, 20000]`.
+3. Use the right loader per moment: **Beacon** (page), **Thread** (joining a session: a dot travels from YOU to ROOM), **pill pulse** (buttons, blocks double clicks), **signal bars with a text label** (room header: strong, weak, reconnecting), **top thread** (route change), **card shimmer** (lists, exact shape of a session card), **hop dots** (chat and stickers sending), **lens** (camera or screen share starting). Keep or retire the existing Signal Prism, but never show two different "main" loaders.
+4. Everything uses tokens, respects `prefers-reduced-motion`, and has `role="status"` or an `aria-label`.
+**How to run and test:** browser DevTools, Network tab: Slow 3G and Offline; screenshot each stage.
+**Not in scope:** hover and page-transition motion (Task 10), emojis (Task 9).
+**Verify with:** screenshots of every stage on Slow 3G; `npx tsc --noEmit && npx vite build && npm test`.
 
-### Task 5: Tests for the rules that matter (`VERIFIED`, done by the Master; extend it)
-`tests/api.test.ts` (run `npm test`, 7 tests passing) now covers: setup code, register forces MEMBER, members cannot change roles or create sessions/classes, private classes, sign-in rate limit; CI runs it from `.github/workflows/ci.yml`. Executors: add a test for every rule you add. Still to add: MEMBER cannot publish video (after Task 1), websocket role checks. Original list was: register forces MEMBER; non-admin cannot change roles; MEMBER cannot publish video; private class refuses non-allowlisted users; setup code required for the first admin; rate limit returns 429. Add a `npm test` script and run it in CI (`.github/workflows`).
+### Task 5: Tests for the rules that matter (`VERIFIED`)
+`tests/api.test.ts` and `tests/video.test.ts` run with `npm test` (18 tests) and in CI. Every task adds tests for its own rules. Still missing: websocket role checks, class attendance rules (Task 6).
 
 ### Task 6: Attendance you can trust (`OPEN`)
-Check how join/leave and active minutes are measured (`/api/classes/:id/attendance/ping`). Fix double counting from multiple tabs, and make the CSV export include join time, leave time, minutes and the student's university ID. Add a test.
+**Goal:** attendance numbers a lecturer can defend.
+1. Check how join, leave and active minutes are measured (`/api/classes/:id/attendance/ping`). Fix double counting from several tabs and from reconnects.
+2. CSV export includes join time, leave time, minutes and the student's university ID.
+3. Show the lecturer a plain per-student summary (present, late, left early) with the thresholds written in the UI.
+**How to run and test:** two browsers as two students in a private class; leave one tab open and one closed; compare minutes.
+**Not in scope:** emailing attendance.
+**Verify with:** a test that two tabs of one student count once; `npm test`.
 
-### Task 7: Real URLs and staying signed in (`OPEN`)
-1. Add URL routing (`/`, `/communities`, `/watch/:id`, `/room/:id`, `/classes`, `/host`, `/profile`, `/admin`, `/auth`) so refresh, Back and shared links work. The Nginx/Express fallback to `index.html` already exists.
-2. Keep people signed in across refresh. Preferred: an `httpOnly`, `SameSite=Lax`, `Secure` cookie session set by the login routes and read by `resolveAuthUser`, with CSRF protection on state-changing routes. Do not put the token in `localStorage`.
-3. Test: refresh keeps you signed in and on the same page; signing out clears it; a private class link opened signed out sends you to sign in, then back.
+### Task 7: Real URLs and staying signed in (`OPEN`, first in line)
+**Goal:** refresh, Back and shared links work.
+1. URL routing: `/`, `/communities`, `/watch/:id`, `/room/:id`, `/classes`, `/host`, `/profile`, `/admin`, `/auth`. The Express fallback to `index.html` already exists.
+2. Stay signed in across refresh with an `httpOnly`, `SameSite=Lax`, `Secure` cookie session read by `resolveAuthUser`, with CSRF protection on state-changing routes. Do not put the token in `localStorage`.
+3. A private-class link opened signed out sends you to sign in, then back to the link.
+**How to run and test:** sign in, open a room, refresh: still signed in on the same page; Back works; sign out clears the cookie.
+**Not in scope:** social login, password reset email.
+**Verify with:** tests for cookie flags, CSRF refusal and sign-out; browser run; `npm test`.
 
-### Task 8: Small fixes found in the debug run (`OPEN`)
-1. Websocket: authenticate with a first message, not the URL query. Keep working for the existing client during the change.
-2. Self-host the three font families (woff2 in `public/fonts`, `font-display: swap`) and remove the Google Fonts link. Keep real fallback stacks.
+### Task 8: Small fixes from the debug run (`OPEN`)
+1. Websocket: authenticate with a first message, not the URL query. Keep the old way working during the change, then remove it.
+2. Self-host Oswald, Poppins and JetBrains Mono (woff2 in `public/fonts`, `font-display: swap`) and remove the Google Fonts link. Keep real fallback stacks.
 3. Class, session, audit and message IDs: use `randomUUID()`.
+**How to run and test:** block `fonts.googleapis.com` in DevTools and confirm headings still use Oswald; check the websocket URL has no token.
+**Not in scope:** new fonts, redesign.
+**Verify with:** `npm test`, a screenshot with Google blocked.
 
-### Later (Master will open when ready)
-Broadcast mode for 150+ viewers (HLS for the audience), live captions (Whisper), host analytics, notification emails, accessibility audit, load test with `k6`.
+### Task 9: Campus emoji pack, stickers and microcopy (`OPEN`)
+**Goal:** the site shows personality and belongs to Kabale. Today there are only 8 reaction emojis and almost none elsewhere.
+
+**A. Reaction pack: 8 existing + 17 campus (25 total).** The quick bar shows the first 8; a "more" button (hover or tap) opens a popover with three labelled groups.
+- Keep: ❤️ Like, 🔥 Fire, 👏 Clap, 🙌 Celebrate, 😂 Laugh, 😮 Wow, 🚀 Launch, 💯 Hundred.
+- **Campus life:** 🎓 Graduate (celebrate a milestone), 📚 Study (this helped me), ☕ Coffee break, 🎒 First day, 🙋 I have a question, 🏆 Win, 🤝 Collab.
+- **Tech and AI club:** 🧠 Big brain, 💻 Code, 🤖 AI, 💡 Idea, 🐛 Bug found, ✅ Shipped.
+- **Kabale and Africa pride:** ⛰️ Hills (Kabale sits in the hills), 🦍 Gorilla (south-west Uganda), 🌍 Africa. *(Do not use the 🇺🇬 flag: Windows shows it as the letters "UG".)*
+- One source of truth: create `src/shared/reactions.ts` (emoji, label, group) imported by **both** the client (`src/components/EmojiReactions.tsx`) and the server whitelist `ALLOWED_REACTIONS` in `server/ws.ts`. Today the server silently turns an unknown reaction into a ❤️ and there is **no rate limit** on reactions, so a script can flood a room. Change it: refuse unknown reactions, and limit each person to about 5 reactions per second (add tests for both).
+- Each button has `aria-label` and a tooltip with the label; the popover is keyboard reachable; `Esc` closes it. Cap floating emojis on screen at 30.
+- Check the whole set renders on Windows, Android and iOS; if any glyph falls back to a box, drop it from the pack.
+
+**B. Where else emojis belong (one per message, with words):**
+- Greeting on Discover by time of day: "Good morning, Brian ☀️" / "Good afternoon ☕" / "Good evening 🌙", using the person's nickname.
+- Empty states: no live sessions: "Quiet on campus right now ☕ The next session starts at 16:00."; empty chat: "Be the first to say hello 👋"; no communities joined: "Find your people 🤝".
+- Moments: attendance marked: "You are in the register 🎓"; session ended: "Thanks for coming 👏 Replay and notes are ready."; poll sent: "Vote counted ✅".
+- Small badges on the profile (first session, 5 questions asked, 10 sessions attended) with an emoji and a plain label.
+- **Never** in errors, security messages, sign-in, admin tables, nav or buttons.
+
+**C. Stickers ("swags"), original and hand-made, not emoji.** Draw 12 SVG stickers in the brand palette in `public/stickers/` (about 3 KB each): "Great talk", "Mind blown", "Slides please", "Louder please", "Need a break", "Thank you", "Ship it", "Kabale hills", "IndabaX", "KAB AI", "Cheers", "Well done". The Watch page already has a tray of 6 stickers (`STICKERS` in `WatchPage.tsx`), but they are only emoji with captions. Replace them with the drawn set and keep the existing send flow and types in `types/kabmeet.ts`. A sticker floats up and fades like a reaction, but larger, and shows the sender's name. Sticker ids go through a server whitelist and the same rate limit.
+**How to run and test:** two browsers in one session; send each reaction and a sticker from one, see it on the other; run with Data Saver on.
+**Not in scope:** user-uploaded stickers, GIF search, animated emoji packs.
+**Verify with:** a test that unknown reactions are refused; screenshots of the popover on desktop and phone, of three empty states, of the sticker tray; `npm test`.
+
+### Task 10: A site that feels alive: hover and motion polish (`OPEN`)
+**Goal:** the site responds to every hover, tap and wait, without getting slow or noisy. Follow the motion policy in section 3. Test at 4x CPU throttle in DevTools.
+1. **Session cards:** on hover lift 4 px with a soft green-tinted shadow; thumbnail zooms to 1.04 inside its frame; a bottom row slides up showing "Watch now" and the viewer count; the same appears on keyboard focus.
+2. **LIVE badge** keeps its soft pulse; viewer counts roll to the new number instead of jumping.
+3. **Buttons:** press scale 0.97; primary pill gets a Signal Green glow on hover; disabled and busy states are clear (pill pulse from Task 4).
+4. **Navigation:** a green underline slides to the active item; the bottom-nav icon on phones bounces once on select.
+5. **Room controls:** tooltips on hover and focus with the shortcut ("Mic, M"); active mic and camera get a gentle ring; tiles scale in from 0.96 and fade when a person joins; a raised hand wiggles once; the active-speaker ring eases in and out.
+6. **Communities:** hover shows a chip "Next session in 2 h" and a "Join" button sliding up; the member avatar stack fans out slightly.
+7. **Lists:** first-load stagger (40 ms per item, at most 8) once per visit; skeleton shimmer while loading (Task 4).
+8. **Page changes:** 150 ms fade and 8 px slide between routes. Scroll reveals on the home page only, once.
+9. **Numbers:** count up once for attendance and totals.
+10. **Toasts:** slide in and out, with a thin progress line showing time left.
+11. **Dark mode:** hover glows use Signal Green at about 20 percent alpha; check contrast.
+12. Add a single `motion` section in the CSS tokens (durations, easings) so every effect uses the same values; add a Data Saver rule that disables items 1, 4, 8, 9 and 10.
+**How to run and test:** desktop (mouse), phone emulation (touch, no hover), `prefers-reduced-motion: reduce`, Data Saver on; record screenshots or a short screen capture of each.
+**Not in scope:** sound effects, 3D, custom cursors, parallax, confetti.
+**Verify with:** no layout shift when hovering; 60 fps on the 4x throttle for the card grid; a screenshot set for reduced motion; `npx tsc --noEmit && npx vite build && npm test`.
+
+### Later (the Master opens these when ready)
+Broadcast mode for 150+ viewers (HLS for the audience), live captions (Whisper), host analytics, notification emails, accessibility audit, load test with `k6`, recording and replay storage.
 
 ---
 
-## 7. Review checklist (what the Master checks before `VERIFIED`)
+## 8. Review checklist (what the Master checks before `VERIFIED`)
 
-- [ ] Server enforces the rule, not just the UI.
+- [ ] The Master re-ran the checks, not only read the report.
+- [ ] The server enforces the rule, not just the UI.
 - [ ] Input validated and capped; no secrets committed.
-- [ ] Works at 360px, light and dark, reduced motion.
-- [ ] Uses tokens and the two fonts; looks hand-made.
-- [ ] `npx tsc --noEmit` and `npx vite build` pass.
-- [ ] The executor states what it ran and what it could not run.
-- [ ] Commits are small and clearly named.
+- [ ] Works at 360px, light and dark, reduced motion, Data Saver.
+- [ ] Uses tokens and the brand fonts; looks hand-made; emoji and motion policies followed.
+- [ ] `npx tsc --noEmit`, `npx vite build` and `npm test` pass; CI is green.
+- [ ] The report states what was run and what was not.
+- [ ] Commits are small and clearly named; no unrelated changes.
 - [ ] README and docs claim only what actually works.
 
 ---
 
-## 8. Executor reports (executors write below this line)
+## 9. Master notes and decisions log
 
-Use this template, newest report on top. Be honest and specific.
+- 2026-11-24: Master reviewed the repo; Phases A (hardening), B (cleanup), C (tests and CI) merged to `main`.
+- 2026-11-24: Master's browser debug run found the missing video, the refresh sign-out and the websocket token in the URL; these became Tasks 1, 7 and 8.
+- 2026-11-25: **Task 1 review (Master).** Branch `task-1-livekit-video` accepted and merged to `main`. Re-ran: typecheck clean, `npm test` 18 of 18, build ok, and my own two-browser end-to-end against a real LiveKit 1.9.4 (camera, microphone, screen share, non-speaker blocked, approve-while-connected). All the report's claims held. Good catches by the Executor: the websocket size limit I set in Phase A (64 KB) would have dropped slide sharing; now 640 KB with a test. Open items were turned into Task 1b and section 6.
+- 2026-11-25: Adopted the Executor's suggestions: every task now has *How to run and test*, *Not in scope*, *Verify with*; known cross-cutting issues moved to section 6; reports must name side fixes; a quick start at the top.
+- 2026-11-25: Emoji rule changed (section 3). Brian wants more campus personality, so emojis are welcome as content, not as icons. Added Tasks 9 (emoji pack, stickers, microcopy) and 10 (hover and motion).
+- Open decision for Brian: Task 3 (one codebase at the root, recommended).
+
+---
+
+## 10. Executor reports (executors write below this line)
+
+Template, newest report on top. Be honest and specific.
 
 ```
 ### Report: Task <n>, <date>, <model name>
 Branch: task-<n>-<name>
+Side fixes outside the task (name them): ...
 Done:
 - ...
 Half-done (and exactly where I stopped):
@@ -180,41 +280,25 @@ Problems or things that look wrong elsewhere:
 - ...
 Suggestions:
 - ...
+Verify with: <the exact commands>
 Ready for review: yes / no
 ```
 
-### Report: Task 1, 2026-11-24, Claude Sonnet 5.5 (Executor)
+### Report: Task 1, 2026-11-24, Claude Sonnet 5.5 (Executor) | Master verdict: VERIFIED (2026-11-25)
 Branch: task-1-livekit-video (from main 9a1dd14)
+Side fixes outside the task: websocket `maxPayload` raised from 64 KB to 640 KB (slide sharing was dropping the connection).
 Done:
 - `server/video.ts`: provider-neutral `VideoProvider` interface + `LiveKitProvider` + `NoVideoProvider`. One LiveKit room per session (`kabmeet-<sessionId>`), identity = user id (two tabs replace each other), 10-minute tokens, `canPublishData:false`. Admin calls (update rights, remove, close room) are best effort with a 4 s timeout so a dead media server never blocks a host click.
 - `POST /api/sessions/:id/video-token` in `server.ts` (auth, `canUserAccessSession`, rate limit 240/min). Order of checks: 404, 403 outsider, `{configured:false}` if no LiveKit, 409 session ended, 403 `WAITING` for waiting-room guests, 403 `NOT_IN_ROOM` for people who have not joined and are not auto-admitted. `canPublish` = host/moderator/lecturer/admin/SPEAKER, or a MEMBER only after `room:approve_speaker`. Host mute removes the MICROPHONE source (camera and screen stay).
 - `server/ws.ts`: exported `isAutoAdmitted`, `getRoomSeat`; approve/demote/mute call `updateParticipant` live, remove_peer calls `removeParticipant`, end_for_all calls `deleteRoom`.
-- BUG FIXED (from Phase A): websocket `maxPayload` was 64 KB but a shared slide can be about 550 KB, so sharing a slide dropped the connection. Now 640 KB, covered by a test.
-- Client: `src/video/useRoomVideo.ts` (connect, publish/unpublish, remote tracks per user id, active speakers, Data Saver = no video subscriptions, token retry) and `src/video/RemoteVideo.tsx`. `RoomPage.tsx` now publishes the existing camera/mic/screen captures and shows remote tiles, active-speaker ring, and a status line ("Connecting video..." or "Video is not configured on this server."). Waiting room, raise hand, host controls, shortcuts, slides, captions untouched. Turning the mic off now stops the mic track.
+- Client: `src/video/useRoomVideo.ts` (connect, publish/unpublish, remote tracks per user id, active speakers, Data Saver = no video subscriptions, token retry) and `src/video/RemoteVideo.tsx`. `RoomPage.tsx` publishes the existing camera/mic/screen captures and shows remote tiles, active-speaker ring, and a status line. Waiting room, raise hand, host controls, shortcuts, slides, captions untouched. Turning the mic off now stops the mic track.
 - `.env.example` (LIVEKIT_*), `infra/livekit/livekit.yaml` + `docker-compose.yml`, `docs/DEPLOYMENT.md` (ports, TURN on campus).
-- `tests/video.test.ts` (11 tests) added to `npm test`: signed-out 401, unknown 404, outsider 403, enrolled student `canPublish:false`, NOT_IN_ROOM, 10-min expiry, WAITING then admit then approve then mute then demote sequence reading the token claims, self-approve refused, 300 KB slide over ws, ended session 409, and the app with no LiveKit returns `{configured:false}`.
-Half-done (and exactly where I stopped):
-- Tile grid still uses the existing 1/2/3-column reflow; no cap or paging at 12 tiles, and no pinned "screen share on stage" layout.
-- Data Saver only stops video downloads. It does not lower the quality of what a speaker sends (camera already uses 640x360 when Data Saver is on).
-Could not run / not verified:
-- Ran: `npx tsc --noEmit` clean, `npx vite build` ok, `npm test` 18/18 pass. Real e2e: local LiveKit 1.x dev server + built app + two headless Chromium with fake camera. The student saw the admin camera at 640x360. A non-speaker student pressing V published nothing.
-- NOT tested: microphone and screen-share end to end, two real machines, mobile browsers, TURN and campus firewalls, more than 2 people, reconnect after a network drop, a real wss:// proxy. My own e2e check that the admin sees their own tile was inconclusive (script selector issue); the screenshot of the student side is correct.
-Problems or things that look wrong elsewhere:
-- Moderation uses the global role, not session scope (a MODERATOR of one session is staff in all). Unverified allowlist identities: a class allowlist is matched on email text only.
-- A speaker approval is lost when the websocket reconnects (seat is rebuilt as non-speaker), so after a reconnect the person keeps a camera published until the media server is told; the next approve fixes it.
-- `package.json` still lists esbuild ^0.25.0 which conflicts with Vite 8 under npm; use `bun install`.
-- Task list numbers: I did not start Tasks 2 to 8. Task 3 was not touched (needs OPEN-APPROVED).
-Suggestions (to ease Master/Executor communication):
-- Put "How to run and test this task" (commands, ports, env vars) in each task so the executor can paste results straight into the report.
-- Let each task list a "Not in scope" line; I had to decide myself where to stop (tile cap, quality).
-- Add a short section "Known cross-cutting issues" (above) so each executor does not rediscover them. I left that list in this report; the Master can move it.
-- Give each report a one-line "Verify with" command. For this task: `npm test` and `npx tsc --noEmit && npx vite build`.
-- Ask executors to name any cross-task bug fix (like maxPayload) in the report heading so it is not lost.
-Ready for review: yes (with the untested items above)
-
----
-
-## 9. Master notes and decisions log
-
-- 2026-11-24: Phases A and B are on `main`. Phase C (tests plus root CI) added by the Master. Known small issue for any executor: class and session IDs use `Date.now()` and can collide; switch them to `randomUUID()` (and the same for audit/message IDs).
-- 2026-11-24: Master reviewed the repo, applied Phases A and B, and wrote this file. Open decision for Brian: Task 3 (keep one codebase at the root, recommended).
+- `tests/video.test.ts` (11 tests): signed-out 401, unknown 404, outsider 403, enrolled student `canPublish:false`, NOT_IN_ROOM, 10-min expiry, WAITING then admit then approve then mute then demote read from the token claims, self-approve refused, 300 KB slide over ws, ended session 409, app with no LiveKit returns `{configured:false}`.
+Half-done:
+- Tile grid still uses the 1/2/3-column reflow; no cap at 12 tiles and no pinned screen-share layout (now Task 1b).
+- Data Saver only stops video downloads, it does not lower what a speaker sends (now Task 1b).
+Could not run / not verified: microphone and screen share end to end, two real machines, mobile browsers, TURN and campus firewalls, more than 2 people, reconnect after a network drop, a real `wss://` proxy. (The Master later ran microphone and screen share on one machine: both worked. The rest is still untested.)
+Problems or things that look wrong elsewhere: moderation uses the global role; class allowlist matched on email text only; speaker approval lost on websocket reconnect; `package.json` esbuild conflicts with Vite 8 under npm. (All moved to section 6.)
+Suggestions: add "how to run and test", "not in scope", "verify with" to each task, a known-issues section, and ask executors to name side fixes. (All adopted, see section 9.)
+Verify with: `npm test` and `npx tsc --noEmit && npx vite build`.
+Ready for review: yes
