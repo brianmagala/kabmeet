@@ -4,7 +4,9 @@ import { useKabmeet } from '../context/KabmeetContext';
 import { HomeSearchBar } from '../components/HomeSearchBar';
 import { LiveCountdown } from '../components/LiveCountdown';
 import { SessionCard } from '../components/SessionCard';
-import { KabmeetLoadingCard, KabmeetSignalPrism } from '../components/KabmeetLoader';
+import { KabmeetSignalPrism } from '../components/KabmeetLoader';
+import { PillPulseButton, ShimmerGrid, SlowStageNotice } from '../components/KabmeetMoments';
+import { useLoadingStage } from '../hooks/useLoadingStage';
 import type { Community, KabSession, SessionContentType } from '../types/kabmeet';
 
 export function DiscoverPage() {
@@ -13,6 +15,7 @@ export function DiscoverPage() {
   const [catalogSessions, setCatalogSessions] = useState<KabSession[]>([]);
   const [communities, setCommunities] = useState<Community[]>([]);
   const [loading, setLoading] = useState(true);
+  const loadStage = useLoadingStage(loading);
   const [error, setError] = useState<string | null>(null);
 
   const [query, setQuery] = useState('');
@@ -297,15 +300,20 @@ export function DiscoverPage() {
       {/* Sessions Grid */}
       <section className="mt-6">
         {loading ? (
-          <KabmeetLoadingCard
-            label="Loading live campus sessions"
-            sublabel="Checking active IndabaX talks, KAB AI coding rooms, and upcoming schedules."
-            slowHint={
-              isSlowNetwork
-                ? 'Slow network detected — optimizing cards for fast campus loading.'
-                : null
-            }
-          />
+          loadStage === 0 ? (
+            <div aria-hidden="true" className="min-h-[320px]" />
+          ) : (
+            <>
+              <ShimmerGrid count={6} label="Loading live campus sessions" />
+              <div className="flex justify-center">
+                <SlowStageNotice
+                  stage={loadStage}
+                  extraHint={isSlowNetwork ? 'Slow network detected. Cards will fill in as they arrive.' : null}
+                  onRetry={loadDiscover}
+                />
+              </div>
+            </>
+          )
         ) : error ? (
           <div className="rounded-xl border border-live-red/40 bg-live-red/10 p-6 text-center">
             <p className="text-sm font-medium text-live-red">{error}</p>
@@ -489,14 +497,14 @@ export function DiscoverPage() {
                 >
                   Cancel
                 </button>
-                <button
+                <PillPulseButton
                   type="submit"
-                  disabled={creating}
-                  className="inline-flex h-10 items-center justify-center gap-2 rounded-full bg-signal-green px-5 text-xs font-semibold uppercase tracking-wider text-night-forest disabled:opacity-75"
+                  busy={creating}
+                  busyLabel="Saving..."
+                  className="inline-flex h-10 items-center justify-center gap-2 rounded-full bg-signal-green px-5 text-xs font-semibold uppercase tracking-wider text-night-forest"
                 >
-                  {creating && <KabmeetSignalPrism size="xs" label="Creating session" />}
-                  <span>{creating ? 'Saving...' : startNow ? 'Launch live' : 'Schedule'}</span>
-                </button>
+                  {startNow ? 'Launch live' : 'Schedule'}
+                </PillPulseButton>
               </div>
             </form>
           </div>

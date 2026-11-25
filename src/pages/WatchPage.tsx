@@ -19,7 +19,8 @@ import {
 import { useKabmeet } from '../context/KabmeetContext';
 import { useSessionRealtime } from '../hooks/useSessionRealtime';
 import { WorkspacePanel } from '../components/WorkspacePanel';
-import { KabmeetLoadingCard, KabmeetSignalPrism } from '../components/KabmeetLoader';
+import { KabmeetLoadingCard } from '../components/KabmeetLoader';
+import { HopDots, SignalBars } from '../components/KabmeetMoments';
 import {
   FloatingReactionsOverlay,
   ReactionBar,
@@ -252,13 +253,17 @@ export function WatchPage() {
     return (
       <div className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
         <KabmeetLoadingCard
+          variant="thread"
+          fromLabel="YOU"
+          toLabel="STREAM"
           label="Tuning into livestream"
           sublabel="Synchronizing video stage, live chat, Q&A, and shared workspace."
           slowHint={
             isSlowNetwork
-              ? 'Poor network detected — toggle Data saver in the top bar for smooth low-bandwidth playback.'
+              ? 'Poor network detected. Turn on Data saver in the top bar for smoother low-bandwidth playback.'
               : null
           }
+          onRetry={loadSession}
         />
       </div>
     );
@@ -327,10 +332,11 @@ export function WatchPage() {
                   </span>
                 )}
                 <span className="inline-flex items-center gap-1.5 rounded-full bg-night-forest/80 px-3 py-1 font-mono text-xs tabular-nums text-white">
-                  {!connected && <KabmeetSignalPrism size="xs" label="Reconnecting live stream" />}
-                  <span>
-                    {viewerCount} watching · {connected ? 'Synced' : 'Reconnecting...'}
-                  </span>
+                  <SignalBars
+                    level={!connected ? 'reconnecting' : isSlowNetwork ? 'weak' : 'strong'}
+                    label={!connected ? 'Reconnecting' : isSlowNetwork ? 'Weak signal' : 'Synced'}
+                  />
+                  <span>{viewerCount} watching</span>
                 </span>
                 {dataSaver && (
                   <span className="rounded-full bg-sun-yellow px-2.5 py-1 text-[11px] font-semibold text-night-forest">
@@ -660,6 +666,11 @@ export function WatchPage() {
                 )}
 
                 {/* Chat Composer */}
+                {!connected && (
+                  <div className="mt-2.5">
+                    <HopDots label="Connecting to chat. Messages will send when it is ready." />
+                  </div>
+                )}
                 <form onSubmit={handleSendChat} className="mt-2.5 flex items-center gap-1.5">
                   <button
                     type="button"

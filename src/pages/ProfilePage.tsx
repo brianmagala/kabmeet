@@ -12,7 +12,8 @@ import {
   X,
 } from 'lucide-react';
 import { useKabmeet } from '../context/KabmeetContext';
-import { KabmeetLoadingCard, KabmeetSignalPrism } from '../components/KabmeetLoader';
+import { KabmeetLoadingCard } from '../components/KabmeetLoader';
+import { PillPulseButton } from '../components/KabmeetMoments';
 import type { AttendanceRecord, AuthUser, Community, KabSession } from '../types/kabmeet';
 
 interface DashboardAttendance extends AttendanceRecord {
@@ -501,14 +502,14 @@ export function ProfilePage() {
                 >
                   Cancel
                 </button>
-                <button
+                <PillPulseButton
                   type="submit"
-                  disabled={saving}
-                  className="inline-flex h-10 items-center justify-center gap-2 rounded-full bg-signal-green px-5 text-xs font-semibold uppercase tracking-wider text-night-forest disabled:opacity-70"
+                  busy={saving}
+                  busyLabel="Saving..."
+                  className="inline-flex h-10 items-center justify-center gap-2 rounded-full bg-signal-green px-5 text-xs font-semibold uppercase tracking-wider text-night-forest"
                 >
-                  {saving && <KabmeetSignalPrism size="xs" label="Saving profile" />}
-                  <span>{saving ? 'Saving...' : 'Save profile'}</span>
-                </button>
+                  Save profile
+                </PillPulseButton>
               </div>
             </form>
           </div>

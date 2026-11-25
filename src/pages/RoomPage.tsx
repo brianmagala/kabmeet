@@ -23,7 +23,8 @@ import {
 import { useKabmeet } from '../context/KabmeetContext';
 import { useSessionRealtime } from '../hooks/useSessionRealtime';
 import { WorkspacePanel } from '../components/WorkspacePanel';
-import { KabmeetLoadingCard, KabmeetSignalPrism } from '../components/KabmeetLoader';
+import { KabmeetLoadingCard } from '../components/KabmeetLoader';
+import { HopDots, LensLoader, SignalBars } from '../components/KabmeetMoments';
 import {
   FloatingReactionsOverlay,
   ReactionBar,
@@ -64,6 +65,7 @@ export function RoomPage() {
   const [mobileShareMenuOpen, setMobileShareMenuOpen] = useState(false);
   const [sharedSlideUrl, setSharedSlideUrl] = useState<string | null>(null);
   const [speakingLocal, setSpeakingLocal] = useState(false);
+  const [mediaStarting, setMediaStarting] = useState<null | 'camera' | 'screen'>(null);
 
   const localVideoRef = useRef<HTMLVideoElement | null>(null);
   const slideInputRef = useRef<HTMLInputElement | null>(null);
@@ -233,6 +235,7 @@ export function RoomPage() {
         pushToast(msg, 'error');
         return;
       }
+      setMediaStarting('camera');
       try {
         let stream: MediaStream;
         try {
@@ -268,6 +271,8 @@ export function RoomPage() {
         const msg = explainMediaError(err, 'Camera');
         setMediaNotice(msg);
         pushToast(msg, 'error');
+      } finally {
+        setMediaStarting(null);
       }
     } else {
       await video.unpublish('camera');
@@ -558,13 +563,17 @@ export function RoomPage() {
     return (
       <div className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
         <KabmeetLoadingCard
+          variant="thread"
+          fromLabel="YOU"
+          toLabel="ROOM"
           label="Joining interactive room"
           sublabel="Preparing participant grid, host controls, and shared workspace."
           slowHint={
             isSlowNetwork
-              ? 'Weak network detected — audio-first 360p mode recommended.'
+              ? 'Weak network detected. Audio-first 360p mode is recommended.'
               : null
           }
+          onRetry={loadSession}
         />
       </div>
     );
@@ -636,9 +645,12 @@ export function RoomPage() {
       <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border bg-surface px-4 py-3">
         <div>
           <p className="flex items-center gap-2 text-[11px] uppercase tracking-wider text-muted">
-            {!connected && <KabmeetSignalPrism size="xs" label="Reconnecting room" />}
+            <SignalBars
+              level={!connected ? 'reconnecting' : isSlowNetwork ? 'weak' : 'strong'}
+              label={!connected ? 'Reconnecting' : isSlowNetwork ? 'Weak signal' : 'Connected'}
+            />
             <span>
-              {session.communityName} · {connected ? 'Connected' : 'Reconnecting...'}
+              {session.communityName}
               {dataSaver ? ' · Data saver (360p)' : ''}
             </span>
           </p>
@@ -717,6 +729,10 @@ export function RoomPage() {
                         alt={`${p.fullName} shared slide`}
                         className="h-full w-full bg-night-forest object-contain"
                       />
+                    ) : isMe && mediaStarting ? (
+                      <div className="flex h-full w-full items-center justify-center bg-gradient-to-br from-indaba-deep-green/80 to-night-forest">
+                        <LensLoader label={mediaStarting === 'screen' ? 'Starting screen share' : 'Starting your camera'} />
+                      </div>
                     ) : (
                       <div className="flex h-full w-full flex-col items-center justify-center bg-gradient-to-br from-indaba-deep-green/80 to-night-forest text-white">
                         <div className="flex h-16 w-16 items-center justify-center rounded-full bg-white/15 font-display text-2xl font-bold uppercase">
@@ -1029,6 +1045,11 @@ export function RoomPage() {
                     </div>
                   ))}
                 </div>
+                {!connected && (
+                  <div className="mt-3">
+                    <HopDots label="Connecting to chat. Messages will send when it is ready." />
+                  </div>
+                )}
                 <form
                   onSubmit={(e) => {
                     e.preventDefault();
