@@ -111,7 +111,7 @@ Status words: `OPEN` > `IN PROGRESS` > `READY FOR REVIEW` > `VERIFIED` (or `REWO
 | 1b | Video polish and safety follow-ups | `OPEN` |
 | 2 | Replace the JSON file store | `OPEN` |
 | 3 | One codebase, honest README | `NEEDS DECISION` |
-| 4 | Loading kit and slow-network stages | `OPEN` |
+| 4 | Loading kit and slow-network stages | `VERIFIED` (follow-ups 4b below) |
 | 5 | Tests for the rules that matter | `VERIFIED` (extend with every task) |
 | 6 | Attendance you can trust | `OPEN` |
 | 7 | Real URLs and staying signed in | `OPEN` |
@@ -151,15 +151,32 @@ Done by an Executor, verified by the Master on 2026-11-25. See the report in sec
 ### Task 3: One codebase, honest README (`NEEDS DECISION`)
 Recommended to Brian: keep the root app as the product, delete the unused `kabmeet/` skeleton, move any still-true docs into the root `docs/`, and rewrite the README so every claim matches what runs. If Brian prefers the monorepo, the Master writes a migration plan first. **Do not start until the Master sets `OPEN`.**
 
-### Task 4: Loading kit and slow-network stages (`OPEN`)
-**Goal:** the site never looks frozen, on a bad network or on a click.
-1. Read `src/components/KabmeetLoader.tsx` and the slow-request logic in `src/context/KabmeetContext.tsx`.
-2. Make the stages match: **nothing under 0.4 s; loader after 0.4 s; at 3 s the notice "Your connection is slow. Still trying."; at 8 s offer Data Saver / audio only; at 20 s stop, show Try again, and keep the content already on the page; offline shows a banner and queues chat sends.** A reference hook: `useLoadingStage(isLoading)` with timers `[400, 3000, 8000, 20000]`.
-3. Use the right loader per moment: **Beacon** (page), **Thread** (joining a session: a dot travels from YOU to ROOM), **pill pulse** (buttons, blocks double clicks), **signal bars with a text label** (room header: strong, weak, reconnecting), **top thread** (route change), **card shimmer** (lists, exact shape of a session card), **hop dots** (chat and stickers sending), **lens** (camera or screen share starting). Keep or retire the existing Signal Prism, but never show two different "main" loaders.
-4. Everything uses tokens, respects `prefers-reduced-motion`, and has `role="status"` or an `aria-label`.
-**How to run and test:** browser DevTools, Network tab: Slow 3G and Offline; screenshot each stage.
-**Not in scope:** hover and page-transition motion (Task 10), emojis (Task 9).
-**Verify with:** screenshots of every stage on Slow 3G; `npx tsc --noEmit && npx vite build && npm test`.
+### Task 4: Loading kit and slow-network stages (`VERIFIED`)
+Done by the Master on 2026-11-25 from the Kabmeet Loading Kit artifact. Six moment loaders added and every `KabmeetLoadingCard` now follows the stages. Code: `src/hooks/useLoadingStage.ts`, `src/components/KabmeetMoments.tsx`, CSS under "Kabmeet moment loaders" in `src/index.css`.
+
+**Stages (`useLoadingStage`, `[400, 3000, 8000, 20000]` ms):** under 0.4 s nothing; 0.4 s loader; 3 s "Your connection is slow. Still trying."; 8 s the AppShell banner's Data saver button is the offer (not repeated in the page); 20 s "Try again" with the content kept.
+
+**Where each loader lives (one moment each, never two main loaders):**
+| Loader | Component | Where |
+|---|---|---|
+| Card shimmer | `ShimmerGrid` | Discover list, Communities list |
+| Pill pulse | `PillPulseButton` | Sign in / sign up, Create session, Save profile |
+| Thread | `KabmeetLoadingCard variant="thread"` | Room and Watch while the session loads |
+| Signal bars + word | `SignalBars` | Room and Watch headers (Synced, Weak signal, Reconnecting) |
+| Lens | `LensLoader` | Own tile while the camera starts |
+| Hop dots | `HopDots` | Above the chat box while chat reconnects |
+| Signal Prism (kept) | `KabmeetSignalPrism` | The single page loader |
+| Top thread | `TopNetworkBar` (existing) | Route/network activity; Beacon not adopted |
+
+**Rules kept:** tokens only, transform/opacity animation, `prefers-reduced-motion` stops them, every loader has `role="status"` or `aria-label`, state is never colour alone.
+
+**Follow-ups (Task 4b, small, do after Task 7):**
+1. Use `PillPulseButton` on the other async buttons (join class, approve, end session, post in community).
+2. Shimmer shapes for Watch list, Host dashboard and Admin tables (new `RowShimmer`).
+3. Use `LensLoader` for screen share too (`mediaStarting === 'screen'` is already typed).
+4. Show `HopDots` while a sticker or poll vote is sending.
+5. Offline: show the banner and queue chat sends (still missing).
+6. If a UI test setup is added, test `useLoadingStage` with fake timers.
 
 ### Task 5: Tests for the rules that matter (`VERIFIED`)
 `tests/api.test.ts` and `tests/video.test.ts` run with `npm test` (18 tests) and in CI. Every task adds tests for its own rules. Still missing: websocket role checks, class attendance rules (Task 6).
@@ -258,6 +275,7 @@ Broadcast mode for 150+ viewers (HLS for the audience), live captions (Whisper),
 - 2026-11-25: **Task 1 review (Master).** Branch `task-1-livekit-video` accepted and merged to `main`. Re-ran: typecheck clean, `npm test` 18 of 18, build ok, and my own two-browser end-to-end against a real LiveKit 1.9.4 (camera, microphone, screen share, non-speaker blocked, approve-while-connected). All the report's claims held. Good catches by the Executor: the websocket size limit I set in Phase A (64 KB) would have dropped slide sharing; now 640 KB with a test. Open items were turned into Task 1b and section 6.
 - 2026-11-25: Adopted the Executor's suggestions: every task now has *How to run and test*, *Not in scope*, *Verify with*; known cross-cutting issues moved to section 6; reports must name side fixes; a quick start at the top.
 - 2026-11-25: Emoji rule changed (section 3). Brian wants more campus personality, so emojis are welcome as content, not as icons. Added Tasks 9 (emoji pack, stickers, microcopy) and 10 (hover and motion).
+- 2026-11-25: **Task 4 done by the Master** (Kabmeet Loading Kit artifact). Six moment loaders plus staged waits, checked in a browser with throttled APIs; typecheck, build and 18 of 18 tests pass. Decision: Signal Prism stays the single page loader, `TopNetworkBar` is the top thread, and slow-network messaging is not duplicated (AppShell banner owns the Data saver offer). Follow-ups in Task 4b.
 - Open decision for Brian: Task 3 (one codebase at the root, recommended).
 
 ---

@@ -1,4 +1,6 @@
 import React, { useId } from 'react';
+import { useLoadingStage } from '../hooks/useLoadingStage';
+import { SlowStageNotice, ThreadLoader } from './KabmeetMoments';
 
 export type LoaderSize = 'xs' | 'sm' | 'md' | 'lg';
 
@@ -160,38 +162,56 @@ export function KabmeetSignalPrism({
 }
 
 /**
- * Full section / page loading stage with optional slow-network status callout.
+ * Full section / page loading stage.
+ * It waits 0.4 s before showing anything (fast loads never flash), then follows the wait:
+ * 3 s slow notice, 8 s Data saver offer, 20 s Try again (when onRetry is given).
+ * variant "thread" is for entering a room or a stream: a dot travels from YOU to the ROOM.
  */
 export function KabmeetLoadingCard({
   label = 'Loading Kabmeet...',
   sublabel = 'Fetching live sessions and community updates.',
   slowHint,
   compact = false,
+  variant = 'prism',
+  fromLabel = 'YOU',
+  toLabel = 'ROOM',
+  onRetry,
 }: {
   label?: string;
   sublabel?: string;
   slowHint?: string | null;
   compact?: boolean;
+  variant?: 'prism' | 'thread';
+  fromLabel?: string;
+  toLabel?: string;
+  onRetry?: () => void;
 }) {
+  const stage = useLoadingStage(true);
+  const boxSize = compact ? 'px-5 py-10' : 'px-6 py-16';
+
+  if (stage === 0) {
+    // Keep the space so the page does not jump when the loader appears.
+    return <div aria-hidden="true" className={`rounded-xl ${compact ? 'min-h-[220px]' : 'min-h-[320px]'}`} />;
+  }
+
   return (
     <div
-      className={`flex flex-col items-center justify-center rounded-xl border border-border bg-surface text-center shadow-sm ${
-        compact ? 'px-5 py-10' : 'px-6 py-16'
-      }`}
+      className={`flex flex-col items-center justify-center rounded-xl border border-border bg-surface text-center shadow-sm ${boxSize}`}
     >
-      <div className="relative flex items-center justify-center rounded-full bg-indaba-deep-green/10 p-4 dark:bg-night-forest/80">
-        <KabmeetSignalPrism size={compact ? 'md' : 'lg'} label={label} />
-      </div>
+      {variant === 'thread' ? (
+        <div className="flex w-full justify-center text-foreground">
+          <ThreadLoader fromLabel={fromLabel} toLabel={toLabel} />
+        </div>
+      ) : (
+        <div className="relative flex items-center justify-center rounded-full bg-indaba-deep-green/10 p-4 dark:bg-night-forest/80">
+          <KabmeetSignalPrism size={compact ? 'md' : 'lg'} label={label} />
+        </div>
+      )}
       <h2 className="mt-4 font-display text-xl font-bold uppercase tracking-wide text-foreground">
         {label}
       </h2>
       <p className="mt-1 max-w-md text-xs leading-relaxed text-muted">{sublabel}</p>
-      {slowHint && (
-        <div className="mt-4 inline-flex items-center gap-2 rounded-full border border-amber-gold/50 bg-sun-yellow/20 px-3.5 py-1.5 text-[11px] font-medium text-foreground">
-          <span className="h-2 w-2 rounded-full bg-amber-gold" aria-hidden="true" />
-          <span>{slowHint}</span>
-        </div>
-      )}
+      <SlowStageNotice stage={stage} extraHint={slowHint} onRetry={onRetry} />
     </div>
   );
 }

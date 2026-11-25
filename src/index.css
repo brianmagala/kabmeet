@@ -250,6 +250,262 @@
   animation: kab-progress-sweep 1.35s cubic-bezier(0.4, 0, 0.2, 1) infinite;
 }
 
+/* ---- Kabmeet moment loaders (see src/components/KabmeetMoments.tsx) ---- */
+.kab-shimmer {
+  background: linear-gradient(
+    100deg,
+    var(--border-subtle) 30%,
+    color-mix(in srgb, var(--signal-green) 22%, var(--border-subtle)) 50%,
+    var(--border-subtle) 70%
+  );
+  background-size: 300% 100%;
+  animation: kab-shimmer 1.6s ease-in-out infinite;
+}
+@keyframes kab-shimmer {
+  0% {
+    background-position: 100% 0;
+  }
+  100% {
+    background-position: 0 0;
+  }
+}
+
+/* Busy pill button: deep green, a beating dot, a scan line along the bottom edge */
+.kab-pill-busy.kab-pill-busy {
+  background: var(--indaba-deep-green) !important;
+  color: #fff !important;
+  opacity: 1 !important;
+  cursor: progress;
+}
+.kab-pill-busy::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  bottom: 0;
+  height: 3px;
+  width: 40%;
+  background: linear-gradient(90deg, transparent, var(--signal-green), var(--sun-yellow));
+  animation: kab-scan 1.3s ease-in-out infinite;
+}
+.kab-ping-dot {
+  position: relative;
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  margin-right: 8px;
+  border-radius: 9999px;
+  background: var(--signal-green);
+}
+.kab-ping-dot::after {
+  content: "";
+  position: absolute;
+  inset: -5px;
+  border-radius: 9999px;
+  border: 2px solid var(--signal-green);
+  animation: kab-ping 1.2s ease-out infinite;
+}
+@keyframes kab-ping {
+  0% {
+    transform: scale(0.4);
+    opacity: 1;
+  }
+  100% {
+    transform: scale(1.6);
+    opacity: 0;
+  }
+}
+@keyframes kab-scan {
+  0% {
+    transform: translateX(-100%);
+  }
+  100% {
+    transform: translateX(260%);
+  }
+}
+
+/* Thread: a dot travels from YOU to ROOM, then the room lights up */
+.kab-thread-dot {
+  animation: kab-thread-travel 2.6s ease-in-out infinite;
+}
+.kab-thread-arrive {
+  transform-box: fill-box;
+  transform-origin: center;
+  opacity: 0;
+  animation: kab-thread-arrive 2.6s ease-in-out infinite;
+}
+@keyframes kab-thread-travel {
+  0% {
+    transform: translateX(0);
+    opacity: 0;
+  }
+  8% {
+    opacity: 1;
+  }
+  70% {
+    transform: translateX(184px);
+    opacity: 1;
+  }
+  78%,
+  100% {
+    transform: translateX(184px);
+    opacity: 0;
+  }
+}
+@keyframes kab-thread-arrive {
+  0%,
+  66% {
+    opacity: 0;
+    transform: scale(0.4);
+  }
+  78% {
+    opacity: 1;
+    transform: scale(1.15);
+  }
+  90% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  100% {
+    opacity: 0;
+    transform: scale(1);
+  }
+}
+
+/* Signal bars: green when strong, amber when weak, climbing yellow while reconnecting */
+.kab-bars {
+  display: inline-flex;
+  align-items: flex-end;
+  gap: 2px;
+  height: 14px;
+}
+.kab-bars i {
+  display: block;
+  width: 3px;
+  border-radius: 1px;
+  background: var(--border-subtle);
+}
+.kab-bars i:nth-child(1) {
+  height: 4px;
+}
+.kab-bars i:nth-child(2) {
+  height: 7px;
+}
+.kab-bars i:nth-child(3) {
+  height: 10px;
+}
+.kab-bars i:nth-child(4) {
+  height: 14px;
+}
+.kab-bars-strong i {
+  background: var(--signal-green);
+}
+.kab-bars-weak i:nth-child(-n + 2) {
+  background: var(--amber-gold);
+}
+.kab-bars-reconnecting i {
+  animation: kab-climb 1.6s steps(1, end) infinite;
+}
+.kab-bars-reconnecting i:nth-child(2) {
+  animation-delay: 0.2s;
+}
+.kab-bars-reconnecting i:nth-child(3) {
+  animation-delay: 0.4s;
+}
+.kab-bars-reconnecting i:nth-child(4) {
+  animation-delay: 0.6s;
+}
+@keyframes kab-climb {
+  0% {
+    background: var(--border-subtle);
+  }
+  25%,
+  70% {
+    background: var(--sun-yellow);
+  }
+  100% {
+    background: var(--border-subtle);
+  }
+}
+
+/* Lens: a ring sweeps around an opening iris */
+.kab-lens {
+  position: relative;
+  display: inline-block;
+  width: 64px;
+  height: 64px;
+}
+.kab-lens-sweep {
+  position: absolute;
+  inset: 0;
+  border-radius: 9999px;
+  background: conic-gradient(from 0deg, transparent 0 55%, var(--signal-green) 100%);
+  -webkit-mask: radial-gradient(farthest-side, transparent calc(100% - 6px), #000 calc(100% - 5px));
+  mask: radial-gradient(farthest-side, transparent calc(100% - 6px), #000 calc(100% - 5px));
+  animation: kab-orbit-cw 1.5s linear infinite;
+}
+.kab-lens-iris {
+  position: absolute;
+  inset: 19px;
+  border-radius: 9999px;
+  background: var(--signal-green);
+  animation: kab-iris 1.5s ease-in-out infinite;
+}
+.kab-lens-glint {
+  position: absolute;
+  top: 22px;
+  left: 26px;
+  width: 7px;
+  height: 7px;
+  border-radius: 9999px;
+  background: var(--sun-yellow);
+}
+@keyframes kab-iris {
+  0%,
+  100% {
+    transform: scale(0.55);
+  }
+  50% {
+    transform: scale(1);
+  }
+}
+
+/* Hop dots */
+.kab-hop {
+  display: inline-flex;
+  gap: 4px;
+  align-items: center;
+  border-radius: 12px 12px 12px 3px;
+  background: var(--indaba-deep-green);
+  padding: 6px 9px;
+}
+.kab-hop i {
+  display: block;
+  width: 6px;
+  height: 6px;
+  border-radius: 9999px;
+  background: var(--signal-green);
+  animation: kab-hop 1.1s ease-in-out infinite;
+}
+.kab-hop i:nth-child(2) {
+  background: var(--sun-yellow);
+  animation-delay: 0.15s;
+}
+.kab-hop i:nth-child(3) {
+  animation-delay: 0.3s;
+}
+@keyframes kab-hop {
+  0%,
+  60%,
+  100% {
+    transform: translateY(0);
+    opacity: 0.55;
+  }
+  30% {
+    transform: translateY(-5px);
+    opacity: 1;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,

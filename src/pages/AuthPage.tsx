@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { ShieldCheck, UserPlus, LogIn } from 'lucide-react';
 import { useKabmeet } from '../context/KabmeetContext';
-import { KabmeetSignalPrism } from '../components/KabmeetLoader';
+import { PillPulseButton } from '../components/KabmeetMoments';
 
 export function AuthPage() {
   const { adminConfigured, login, register, claimAdmin, navigate } = useKabmeet();
@@ -227,22 +227,14 @@ export function AuthPage() {
             />
           </div>
 
-          <button
+          <PillPulseButton
             type="submit"
-            disabled={submitting}
-            className="inline-flex h-11 w-full items-center justify-center gap-2 rounded-full bg-signal-green text-xs font-semibold uppercase tracking-[0.08em] text-night-forest transition-transform duration-150 hover:brightness-95 active:scale-[0.98] disabled:opacity-70"
+            busy={submitting}
+            busyLabel={tab === 'claim' ? 'Setting up...' : tab === 'register' ? 'Creating account...' : 'Signing in...'}
+            className="inline-flex h-11 w-full items-center justify-center gap-2 rounded-full bg-signal-green text-xs font-semibold uppercase tracking-[0.08em] text-night-forest transition-transform duration-150 hover:brightness-95 active:scale-[0.98]"
           >
-            {submitting && <KabmeetSignalPrism size="xs" label="Signing in" />}
-            <span>
-              {submitting
-                ? 'Please wait...'
-                : tab === 'claim'
-                  ? 'Claim Admin & Continue'
-                  : tab === 'register'
-                    ? 'Create Member Account'
-                    : 'Sign in'}
-            </span>
-          </button>
+            {tab === 'claim' ? 'Claim Admin & Continue' : tab === 'register' ? 'Create Member Account' : 'Sign in'}
+          </PillPulseButton>
         </form>
 
         <div className="mt-6 flex items-center justify-between border-t border-border pt-4 text-xs text-muted">

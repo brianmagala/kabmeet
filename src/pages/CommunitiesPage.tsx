@@ -1,7 +1,8 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { ArrowLeft, CalendarDays, MessageSquare, Play, Users } from 'lucide-react';
 import { useKabmeet } from '../context/KabmeetContext';
-import { KabmeetLoadingCard } from '../components/KabmeetLoader';
+import { ShimmerGrid, SlowStageNotice } from '../components/KabmeetMoments';
+import { useLoadingStage } from '../hooks/useLoadingStage';
 import type { Community, CommunityPost, KabSession } from '../types/kabmeet';
 
 export function CommunitiesPage() {
@@ -14,6 +15,7 @@ export function CommunitiesPage() {
     posts: CommunityPost[];
   } | null>(null);
   const [loading, setLoading] = useState(true);
+  const loadStage = useLoadingStage(loading);
   const [error, setError] = useState<string | null>(null);
 
   const [postTitle, setPostTitle] = useState('');
@@ -110,11 +112,24 @@ export function CommunitiesPage() {
   if (loading) {
     return (
       <div className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
-        <KabmeetLoadingCard
-          label="Loading Kabale communities"
-          sublabel="Fetching club rosters, upcoming sessions, and campus announcements."
-          slowHint={isSlowNetwork ? 'Weak network — keeping community feeds lightweight.' : null}
-        />
+        {loadStage === 0 ? (
+          <div aria-hidden="true" className="min-h-[320px]" />
+        ) : (
+          <>
+            <ShimmerGrid
+              count={4}
+              className="grid gap-6 md:grid-cols-2"
+              label="Loading Kabale communities"
+            />
+            <div className="flex justify-center">
+              <SlowStageNotice
+                stage={loadStage}
+                extraHint={isSlowNetwork ? 'Weak network. Community feeds will fill in as they arrive.' : null}
+                onRetry={loadCommunities}
+              />
+            </div>
+          </>
+        )}
       </div>
     );
   }
