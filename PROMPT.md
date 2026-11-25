@@ -103,7 +103,7 @@ Status words: `OPEN` > `IN PROGRESS` > `READY FOR REVIEW` > `VERIFIED` (or `REWO
 
 ## 7. Task queue and priority order (kept by the Master)
 
-**Order of work:** 7 > 8 > 1b > 4 > 9 > 10 > 6 > 2 > 3 (3 needs Brian). Reason: fix what hurts every user first (refresh, fonts), then polish video, then the feel of the site, then trustworthy data.
+**Order of work:** 7 > 8 > 1b > 4b > 9 > 10 > 15 > 6 > 11 > 13 > 12 > 14 > 16 > 2 > 3 (3 needs Brian). Reason: fix what hurts every user first (refresh, fonts), then polish video, then the feel of the site, then trustworthy data.
 
 | Task | Name | Status |
 |---|---|---|
@@ -118,6 +118,12 @@ Status words: `OPEN` > `IN PROGRESS` > `READY FOR REVIEW` > `VERIFIED` (or `REWO
 | 8 | Small fixes from the debug run | `OPEN` |
 | 9 | Campus emoji pack, stickers and microcopy | `OPEN` |
 | 10 | A site that feels alive: hover and motion polish | `OPEN` |
+| 11 | Recordings and replays (LiveKit Egress) | `OPEN` |
+| 12 | Live captions and accessibility | `OPEN` |
+| 13 | Notifications: "going live" push and reminders | `OPEN` |
+| 14 | Engagement: badges, streaks, leaderboard, session analytics | `OPEN` |
+| 15 | Offline-first: queue chat sends, cached lists | `OPEN` |
+| 16 | Hackathon and IndabaX mode: schedule, teams, judges, certificates | `OPEN` |
 
 ---
 
@@ -177,6 +183,48 @@ Done by the Master on 2026-11-25 from the Kabmeet Loading Kit artifact. Six mome
 4. Show `HopDots` while a sticker or poll vote is sending.
 5. Offline: show the banner and queue chat sends (still missing).
 6. If a UI test setup is added, test `useLoadingStage` with fake timers.
+
+### Task 11: Recordings and replays (`OPEN`)
+**Goal:** a session that ended can still be watched, on a slow link too.
+1. Use LiveKit Egress (record a room to MP4 or HLS; audio-only recording is cheaper and good for Data saver). Add it behind the `VideoProvider` adapter (`startRecording`, `stopRecording`), not directly in routes.
+2. Host toggle "Record this session"; a visible recording indicator for everyone; store files on the server disk or S3-compatible storage, path from an env var.
+3. Replay page with chapters (when polls, slides and Q&A happened). Only members allowed to watch live may watch the replay.
+**Not in scope:** editing, public sharing.
+**Verify with:** record 1 minute with two browsers; replay plays; non-members get 403; tests for the permission rule.
+
+### Task 12: Live captions and accessibility (`OPEN`)
+**Goal:** every student can follow, in any noise level.
+1. Captions toggle in Room and Watch (start with browser speech recognition for the speaker's own mic; a server transcription service is a later option).
+2. Text size and high-contrast switch saved per user; keyboard-only path through Room and Watch; skip links; focus rings.
+3. Run an accessibility pass (WCAG 2.1 AA): contrast, touch targets, screen reader labels.
+**Verify with:** keyboard-only walkthrough screenshots; contrast report.
+
+### Task 13: Notifications (`OPEN`)
+**Goal:** people come back when it matters. PWA is already set up.
+1. Web Push (service worker) for: a session you follow goes live, a class starts in 10 minutes, a host approved your hand.
+2. Settings page with per-type switches; quiet hours; never ask for permission on first load, ask after the first follow.
+3. In-app bell with the same events (works when push is blocked).
+**Verify with:** two browsers; follow, go live, notification arrives; unsubscribed user gets nothing.
+
+### Task 14: Engagement: badges, streaks, leaderboard, analytics (`OPEN`)
+**Goal:** friendly motivation for the club, plus numbers for hosts.
+1. Badges as content (campus emoji from Task 9): First Session, Question Asker, Poll Master, Regular (streak of weeks), Host.
+2. Club leaderboard, opt-in, weekly reset, never shows exact minutes of private classes.
+3. Host dashboard per session: peak viewers, average watch time, questions, poll participation.
+**Not in scope:** rewards with money value.
+
+### Task 15: Offline-first (`OPEN`)
+**Goal:** the site stays usable when the network drops (follow-up 5 of Task 4b).
+1. Show an offline banner; queue chat messages and hand raises and send them in order on reconnect, with "Sending..." then "Sent" or "Not sent, tap to retry".
+2. Cache the last Discover and Communities lists in the service worker so they open instantly and refresh quietly (stale-while-revalidate).
+**Verify with:** DevTools Offline; send 3 messages; go online; they arrive once and in order (no duplicates).
+
+### Task 16: Hackathon and IndabaX mode (`OPEN`)
+**Goal:** run a whole event, not just a stream.
+1. Event page: schedule of sessions, speakers, countdown, "Add to calendar" file (.ics).
+2. Hackathon tools: teams (create, join by code), submission link and demo slot, judge scoring form, results reveal.
+3. Certificates of attendance as a downloadable PDF with name, event and date (uses the attendance numbers from Task 6, so do Task 6 first).
+**Verify with:** run a mock 2-session event with 3 teams and 2 judges.
 
 ### Task 5: Tests for the rules that matter (`VERIFIED`)
 `tests/api.test.ts` and `tests/video.test.ts` run with `npm test` (18 tests) and in CI. Every task adds tests for its own rules. Still missing: websocket role checks, class attendance rules (Task 6).
@@ -276,6 +324,7 @@ Broadcast mode for 150+ viewers (HLS for the audience), live captions (Whisper),
 - 2026-11-25: Adopted the Executor's suggestions: every task now has *How to run and test*, *Not in scope*, *Verify with*; known cross-cutting issues moved to section 6; reports must name side fixes; a quick start at the top.
 - 2026-11-25: Emoji rule changed (section 3). Brian wants more campus personality, so emojis are welcome as content, not as icons. Added Tasks 9 (emoji pack, stickers, microcopy) and 10 (hover and motion).
 - 2026-11-25: **Task 4 done by the Master** (Kabmeet Loading Kit artifact). Six moment loaders plus staged waits, checked in a browser with throttled APIs; typecheck, build and 18 of 18 tests pass. Decision: Signal Prism stays the single page loader, `TopNetworkBar` is the top thread, and slow-network messaging is not duplicated (AppShell banner owns the Data saver offer). Follow-ups in Task 4b.
+- 2026-11-25: **New ideas added after research** (LiveKit Egress, higher-ed streaming feature lists, PWA offline and push practice, event engagement tools): Tasks 11 to 16. Order puts offline (15) before recordings (11) because campus networks drop first.
 - Open decision for Brian: Task 3 (one codebase at the root, recommended).
 
 ---
