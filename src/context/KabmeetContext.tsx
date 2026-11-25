@@ -8,17 +8,23 @@ import React, {
   useState,
 } from 'react';
 import type { AuthUser, SiteFooterConfig, UserRole } from '../types/kabmeet';
+import {
+  buildPath,
+  parsePath,
+  safeReturnPath,
+  SIGN_IN_ROUTES,
+  type AppRoute,
+} from '../lib/routes';
 
-export type AppRoute =
-  | 'discover'
-  | 'communities'
-  | 'watch'
-  | 'room'
-  | 'classes'
-  | 'host-panel'
-  | 'profile'
-  | 'admin'
-  | 'auth';
+export type { AppRoute };
+
+/** Reads the CSRF value the server put in a cookie. It is not secret: it only proves the request came from our own pages. */
+function readCsrfToken(): string | null {
+  const match = document.cookie.split('; ').find((c) => c.startsWith('kab_csrf='));
+  return match ? decodeURIComponent(match.slice('kab_csrf='.length)) : null;
+}
+
+const DEFAULT_SESSION_ID = 'sess-ml-python';
 
 export type ThemeMode = 'light' | 'dark';
 
@@ -32,11 +38,15 @@ interface KabmeetContextValue {
   route: AppRoute;
   activeSessionId: string;
   activeCommunitySlug: string | null;
-  navigate: (route: AppRoute, opts?: { sessionId?: string; communitySlug?: string | null }) => void;
+  navigate: (
+    route: AppRoute,
+    opts?: { sessionId?: string; communitySlug?: string | null; replace?: boolean },
+  ) => void;
 
   user: AuthUser | null;
   role: UserRole;
-  accessToken: string | null;
+  /** True when the browser holds a signed-in session (the token itself lives in an httpOnly cookie). */
+  signedIn: boolean;
   allowedRoutes: string[];
   adminConfigured: boolean;
   authLoading: boolean;
@@ -96,12 +106,15 @@ export function useOptionalKabmeet(): KabmeetContextValue | null {
 }
 
 export function KabmeetProvider({ children }: { children: React.ReactNode }) {
-  const [route, setRoute] = useState<AppRoute>('discover');
-  const [activeSessionId, setActiveSessionId] = useState<string>('sess-ml-python');
-  const [activeCommunitySlug, setActiveCommunitySlug] = useState<string | null>(null);
+  // The address bar is the source of truth at start-up, so refresh and shared links open the right screen.
+  const initial = useMemo(() => parsePath(window.location.pathname), []);
+  const [route, setRoute] = useState<AppRoute>(initial?.route ?? 'discover');
+  const [activeSessionId, setActiveSessionId] = useState<string>(initial?.sessionId ?? DEFAULT_SESSION_ID);
+  const [activeCommunitySlug, setActiveCommunitySlug] = useState<string | null>(initial?.communitySlug ?? null);
+  // Where to go after sign-in when a signed-out person opened a link that needs an account.
+  const returnToRef = useRef<string | null>(null);
 
-  // Access token kept strictly in React memory (never localStorage/sessionStorage)
-  const [accessToken, setAccessToken] = useState<string | null>(null);
+  // The sign-in token lives in an httpOnly cookie that scripts cannot read. We only keep the user here.
   const [user, setUser] = useState<AuthUser | null>(null);
   const [allowedRoutes, setAllowedRoutes] = useState<string[]>(['/', '/communities']);
   const [adminConfigured, setAdminConfigured] = useState<boolean>(true);
@@ -189,10 +202,12 @@ export function KabmeetProvider({ children }: { children: React.ReactNode }) {
         if (!headers.has('Content-Type') && init.body) {
           headers.set('Content-Type', 'application/json');
         }
-        if (accessToken) {
-          headers.set('Authorization', `Bearer ${accessToken}`);
+        const method = (init.method ?? 'GET').toUpperCase();
+        if (method !== 'GET' && method !== 'HEAD') {
+          const csrf = readCsrfToken();
+          if (csrf) headers.set('X-CSRF-Token', csrf);
         }
-        const res = await fetch(url, { ...init, headers });
+        const res = await fetch(url, { ...init, headers, credentials: 'same-origin' });
         if (!res.ok) {
           let message = 'Something went wrong. Please try again.';
           try {
@@ -213,7 +228,7 @@ export function KabmeetProvider({ children }: { children: React.ReactNode }) {
         });
       }
     },
-    [accessToken],
+    [],
   );
 
   const refreshSession = useCallback(async () => {
@@ -315,39 +330,91 @@ export function KabmeetProvider({ children }: { children: React.ReactNode }) {
     });
   }, [pushToast]);
 
+  const activeSessionIdRef = useRef(activeSessionId);
+  activeSessionIdRef.current = activeSessionId;
+
+  const showNavigating = useCallback(() => {
+    setIsNavigating(true);
+    if (navTimerRef.current) window.clearTimeout(navTimerRef.current);
+    navTimerRef.current = window.setTimeout(() => setIsNavigating(false), 280);
+  }, []);
+
   const navigate = useCallback(
     (
       nextRoute: AppRoute,
-      opts?: { sessionId?: string; communitySlug?: string | null },
+      opts?: { sessionId?: string; communitySlug?: string | null; replace?: boolean },
     ) => {
+      const sessionId = opts?.sessionId ?? activeSessionIdRef.current;
+      const communitySlug = opts && 'communitySlug' in opts ? (opts.communitySlug ?? null) : undefined;
       if (opts?.sessionId) setActiveSessionId(opts.sessionId);
-      if (opts && 'communitySlug' in opts) setActiveCommunitySlug(opts.communitySlug ?? null);
-      setIsNavigating(true);
-      if (navTimerRef.current) window.clearTimeout(navTimerRef.current);
-      navTimerRef.current = window.setTimeout(() => setIsNavigating(false), 280);
+      if (communitySlug !== undefined) setActiveCommunitySlug(communitySlug);
+      showNavigating();
       setRoute(nextRoute);
+      const path = buildPath(nextRoute, { sessionId, communitySlug: communitySlug ?? null });
+      if (path !== window.location.pathname) {
+        window.history[opts?.replace ? 'replaceState' : 'pushState'](null, '', path);
+      }
       window.scrollTo({ top: 0, behavior: 'smooth' });
     },
-    [],
+    [showNavigating],
   );
+
+  /** Opens an address (from the Back button, or the saved "return to" link after sign-in). */
+  const applyPath = useCallback(
+    (pathname: string, mode: 'none' | 'replace') => {
+      const parsed = parsePath(pathname);
+      if (!parsed) {
+        window.history.replaceState(null, '', '/');
+        setRoute('discover');
+        setActiveCommunitySlug(null);
+        return;
+      }
+      if (parsed.sessionId) setActiveSessionId(parsed.sessionId);
+      setActiveCommunitySlug(parsed.communitySlug ?? null);
+      showNavigating();
+      setRoute(parsed.route);
+      if (mode === 'replace' && pathname !== window.location.pathname) {
+        window.history.replaceState(null, '', pathname);
+      }
+    },
+    [showNavigating],
+  );
+
+  // Back and Forward buttons.
+  useEffect(() => {
+    const onPop = () => applyPath(window.location.pathname, 'none');
+    window.addEventListener('popstate', onPop);
+    return () => window.removeEventListener('popstate', onPop);
+  }, [applyPath]);
+
+  // An unknown address (for example /nonsense) is tidied to "/" once, at start-up.
+  useEffect(() => {
+    if (!initial) window.history.replaceState(null, '', '/');
+  }, [initial]);
+
+  // After sign-in: back to the link the person came for, otherwise Discover.
+  const finishSignIn = useCallback(() => {
+    const target = safeReturnPath(returnToRef.current);
+    returnToRef.current = null;
+    if (target) applyPath(target.split(/[?#]/)[0], 'replace');
+    else navigate('discover', { replace: true });
+  }, [applyPath, navigate]);
 
   const login = useCallback(
     async (email: string, password: string) => {
       const res = await apiFetch<{
         user: AuthUser;
-        accessToken: string;
         allowedRoutes: string[];
       }>('/api/auth/login', {
         method: 'POST',
         body: JSON.stringify({ email, password }),
       });
-      setAccessToken(res.accessToken);
       setUser(res.user);
       setAllowedRoutes(res.allowedRoutes);
       pushToast(`Welcome back, ${res.user.fullName}.`, 'success');
-      setRoute('discover');
+      finishSignIn();
     },
-    [apiFetch, pushToast],
+    [apiFetch, pushToast, finishSignIn],
   );
 
   const register = useCallback(
@@ -360,39 +427,35 @@ export function KabmeetProvider({ children }: { children: React.ReactNode }) {
     }) => {
       const res = await apiFetch<{
         user: AuthUser;
-        accessToken: string;
         allowedRoutes: string[];
       }>('/api/auth/register', {
         method: 'POST',
         body: JSON.stringify(payload),
       });
-      setAccessToken(res.accessToken);
       setUser(res.user);
       setAllowedRoutes(res.allowedRoutes);
       pushToast(`Account created! Welcome to Kabmeet, ${res.user.fullName}.`, 'success');
-      setRoute('discover');
+      finishSignIn();
     },
-    [apiFetch, pushToast],
+    [apiFetch, pushToast, finishSignIn],
   );
 
   const claimAdmin = useCallback(
     async (payload: { email: string; fullName: string; password: string; setupCode: string }) => {
       const res = await apiFetch<{
         user: AuthUser;
-        accessToken: string;
         allowedRoutes: string[];
       }>('/api/auth/claim-admin', {
         method: 'POST',
         body: JSON.stringify(payload),
       });
-      setAccessToken(res.accessToken);
       setUser(res.user);
       setAllowedRoutes(res.allowedRoutes);
       setAdminConfigured(true);
       pushToast('Admin account claimed. You now have full platform access.', 'success');
-      setRoute('discover');
+      finishSignIn();
     },
-    [apiFetch, pushToast],
+    [apiFetch, pushToast, finishSignIn],
   );
 
   const updateUserProfile = useCallback(
@@ -428,18 +491,24 @@ export function KabmeetProvider({ children }: { children: React.ReactNode }) {
 
   const logout = useCallback(async () => {
     try {
-      if (accessToken) {
-        await apiFetch('/api/auth/logout', { method: 'POST' });
-      }
+      await apiFetch('/api/auth/logout', { method: 'POST' });
     } catch {
-      // Clear local session regardless
+      // The server also drops the cookie on its next check, so clear the screen regardless.
     }
-    setAccessToken(null);
+    returnToRef.current = null;
     setUser(null);
     setAllowedRoutes(['/', '/communities']);
     pushToast('Signed out cleanly.', 'info');
-    setRoute('discover');
-  }, [accessToken, apiFetch, pushToast]);
+    navigate('discover', { replace: true });
+  }, [apiFetch, pushToast, navigate]);
+
+  // A signed-out visitor who opens a link that needs an account is sent to sign in, then back to that link.
+  useEffect(() => {
+    if (authLoading || user || !SIGN_IN_ROUTES.has(route)) return;
+    returnToRef.current = window.location.pathname;
+    pushToast('Please sign in to open that page.', 'info');
+    navigate('auth', { replace: true });
+  }, [authLoading, user, route, navigate, pushToast]);
 
   const isBusy = pendingRequests > 0 || isNavigating;
   const isSlowNetwork = isSlowRequest || isSlowConnection;
@@ -452,7 +521,7 @@ export function KabmeetProvider({ children }: { children: React.ReactNode }) {
       navigate,
       user,
       role: user?.role ?? 'VISITOR',
-      accessToken,
+      signedIn: Boolean(user),
       allowedRoutes,
       adminConfigured,
       authLoading,
@@ -485,7 +554,6 @@ export function KabmeetProvider({ children }: { children: React.ReactNode }) {
       activeCommunitySlug,
       navigate,
       user,
-      accessToken,
       allowedRoutes,
       adminConfigured,
       authLoading,

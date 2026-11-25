@@ -1,3 +1,4 @@
+import { isSameOrigin, sessionTokenFromCookies } from './session-cookie';
 import type { Server as HttpServer } from 'node:http';
 import { WebSocket, WebSocketServer } from 'ws';
 import { hashToken, isStaffOrHost } from './auth';
@@ -173,8 +174,13 @@ export function attachWebSocketServer(httpServer: HttpServer): void {
   wss.on('connection', (ws, req) => {
     const reqUrl = new URL(req.url ?? '/ws', 'http://localhost');
     const sessionId = reqUrl.searchParams.get('sessionId') ?? '';
-    const token = reqUrl.searchParams.get('token');
-    const user = resolveUserFromToken(token);
+    // Sign-in comes from the ?token= query (old way, removed in Task 8) or the httpOnly session cookie.
+    // A cookie is sent by the browser for any page, so a cookie sign-in is only accepted from our own origin
+    // (otherwise another site could open a socket as the signed-in person).
+    const queryToken = reqUrl.searchParams.get('token');
+    const cookieToken = queryToken ? null : sessionTokenFromCookies(req.headers);
+    const originOk = isSameOrigin(req.headers.origin, req.headers.host);
+    const user = resolveUserFromToken(queryToken ?? (originOk ? cookieToken : null));
 
     if (!sessionId || !canUserAccessSession(sessionId, user)) {
       sendError(ws, 'You do not have permission to enter this session.');

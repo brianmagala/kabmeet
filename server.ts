@@ -13,6 +13,13 @@ import {
   isStaffOrHost,
   verifyPassword,
 } from './server/auth';
+import {
+  clearSessionCookies,
+  csrfGuard,
+  ensureCsrfCookie,
+  sessionTokenFromCookies,
+  setSessionCookies,
+} from './server/session-cookie';
 import { store, type StoredUser } from './server/store';
 import { getVideoProvider } from './server/video';
 import {
@@ -46,13 +53,14 @@ function sanitizeUser(u: StoredUser): AuthUser {
   };
 }
 
+/** Bearer header first (tests, scripts), then the httpOnly session cookie (the browser app). */
 function extractBearerToken(req: Request): string | null {
   const header = req.headers.authorization;
   if (typeof header === 'string' && header.startsWith('Bearer ')) {
     const token = header.slice(7).trim();
     if (token.length > 0) return token;
   }
-  return null;
+  return sessionTokenFromCookies(req.headers);
 }
 
 function resolveAuthUser(req: Request): { user: StoredUser; tokenHash: string } | null {
@@ -268,6 +276,7 @@ async function startServer() {
   app.set('trust proxy', 1);
   app.use(securityHeaders);
   app.use(express.json({ limit: '1mb' }));
+  app.use('/api', csrfGuard);
   app.use('/api/auth/login', rateLimit('login', 10, 15 * 60 * 1000));
   app.use('/api/auth/register', rateLimit('register', 10, 60 * 60 * 1000));
   app.use('/api/auth/claim-admin', rateLimit('claim', 5, 15 * 60 * 1000));
@@ -289,6 +298,8 @@ async function startServer() {
     const adminConfigured = envPasscodeSet || store.state.adminClaimed || hasAdminUser;
 
     if (!req.authUser) {
+      // A cookie that no longer matches a live sign-in is dropped so the browser stops sending it.
+      if (sessionTokenFromCookies(req.headers)) clearSessionCookies(req, res);
       res.json({
         authenticated: false,
         role: 'VISITOR',
@@ -299,6 +310,7 @@ async function startServer() {
       return;
     }
 
+    ensureCsrfCookie(req, res, new Date(Date.now() + SESSION_TTL_MS).toISOString());
     res.json({
       authenticated: true,
       role: req.authUser.role,
@@ -347,6 +359,7 @@ async function startServer() {
     store.save();
 
     const { accessToken, expiresAt } = issueUserToken(adminUser.id);
+    setSessionCookies(req, res, accessToken, expiresAt);
     res.status(201).json({
       user: sanitizeUser(adminUser),
       accessToken,
@@ -388,6 +401,7 @@ async function startServer() {
     store.save();
 
     const { accessToken, expiresAt } = issueUserToken(created.id);
+    setSessionCookies(req, res, accessToken, expiresAt);
     res.status(201).json({
       user: sanitizeUser(created),
       accessToken,
@@ -427,6 +441,7 @@ async function startServer() {
         store.save();
       }
       const { accessToken, expiresAt } = issueUserToken(user.id);
+      setSessionCookies(req, res, accessToken, expiresAt);
       res.json({
         user: sanitizeUser(user),
         accessToken,
@@ -448,6 +463,7 @@ async function startServer() {
     }
 
     const { accessToken, expiresAt } = issueUserToken(user.id);
+    setSessionCookies(req, res, accessToken, expiresAt);
     res.json({
       user: sanitizeUser(user),
       accessToken,
@@ -459,6 +475,7 @@ async function startServer() {
   app.post('/api/auth/logout', requireAuth, (req: AuthedRequest, res) => {
     store.state.tokens = store.state.tokens.filter((t) => t.tokenHash !== req.authTokenHash);
     store.save();
+    clearSessionCookies(req, res);
     res.json({ ok: true });
   });
 

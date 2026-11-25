@@ -19,7 +19,8 @@ export interface FloatingHeart {
 }
 
 export function useSessionRealtime(sessionId: string) {
-  const { accessToken, pushToast } = useKabmeet();
+  // Sign-in travels as the httpOnly cookie on the websocket handshake; `signedIn` only tells us to reconnect when it changes.
+  const { signedIn, pushToast } = useKabmeet();
   const wsRef = useRef<WebSocket | null>(null);
   const [connected, setConnected] = useState(false);
   const [accessDenied, setAccessDenied] = useState<string | null>(null);
@@ -36,7 +37,6 @@ export function useSessionRealtime(sessionId: string) {
       if (cancelled) return;
       const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
       const params = new URLSearchParams({ sessionId });
-      if (accessToken) params.set('token', accessToken);
       const url = `${protocol}//${window.location.host}/ws?${params.toString()}`;
       const ws = new WebSocket(url);
       wsRef.current = ws;
@@ -231,7 +231,7 @@ export function useSessionRealtime(sessionId: string) {
       wsRef.current?.close();
       wsRef.current = null;
     };
-  }, [sessionId, accessToken, pushToast]);
+  }, [sessionId, signedIn, pushToast]);
 
   const emit = useCallback((event: string, payload: Record<string, unknown> = {}) => {
     const ws = wsRef.current;
