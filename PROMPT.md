@@ -69,12 +69,14 @@ Status words: `OPEN` > `IN PROGRESS` > `READY FOR REVIEW` > `VERIFIED` (or `REWO
 
 ## 5. Status (kept by the Master)
 
-**Last updated:** 2026-11-25 (Master).
+**Last updated:** 2026-11-26 (Master).
 
 **On `main` now**
 - Security hardening: first-admin setup code, rate limits, security headers, safer tokens.
 - Cleanup: Kabmeet `.env.example`, package name, unused SDK removed.
-- Tests: `npm test` (18 tests, all pass) and a root CI workflow (`.github/workflows/ci.yml`; check the Actions tab on GitHub to confirm it runs green).
+- Tests: `npm test` (33 tests, all pass) and a root CI workflow (`.github/workflows/ci.yml`; check the Actions tab on GitHub to confirm it runs green).
+- **Loading kit (Task 4, verified):** six moment loaders and staged waits (0.4 s, 3 s, 8 s, 20 s) on the real pages.
+- **Engagement (Task 14, verified):** badges, weekly streaks, opt-in leaderboard, host session numbers.
 - **Real video (Task 1, verified):** camera, microphone and screen share between people, through self-hosted LiveKit behind an adapter. Without LiveKit settings the Room still works for chat, hands and the workspace.
 
 **Verified working by the Master's own browser runs** (Playwright, fake cameras, real LiveKit 1.9.4 server): first-admin setup; sign-in; every page loads without script errors; no sideways scrolling on the Discover page at 360px; chat and websocket; waiting room; a student who is not approved publishes nothing; the student sees the admin's camera (640x360) and hears live audio; the admin's screen share reaches the student (1280x720); after the host approves a student as speaker *while connected*, the student's camera reaches the admin.
@@ -85,7 +87,7 @@ Status words: `OPEN` > `IN PROGRESS` > `READY FOR REVIEW` > `VERIFIED` (or `REWO
 1. Refresh signs you out and the address never changes (Task 7).
 2. Data is stored in a JSON file (Task 2).
 3. Two codebases in one repo; README claims more than is built (Task 3).
-4. The site feels plain: 8 reactions, few emojis, little hover feedback, loaders not matched to moments (Tasks 4, 9, 10).
+4. The site still needs more emojis as content and hover feedback (Tasks 9, 10). Loaders are done (Task 4).
 
 ## 6. Known cross-cutting issues (so nobody rediscovers them)
 
@@ -103,7 +105,7 @@ Status words: `OPEN` > `IN PROGRESS` > `READY FOR REVIEW` > `VERIFIED` (or `REWO
 
 ## 7. Task queue and priority order (kept by the Master)
 
-**Order of work:** 7 > 8 > 1b > 4b > 9 > 10 > 15 > 6 > 11 > 13 > 12 > 14 > 16 > 2 > 3 (3 needs Brian). Reason: fix what hurts every user first (refresh, fonts), then polish video, then the feel of the site, then trustworthy data.
+**Order of work:** 16 (assigned this round) > 7 > 8 > 1b > 4b > 14b > 9 > 10 > 15 > 6 > 11 > 13 > 12 > 2 > 3 (3 needs Brian). Reason: fix what hurts every user first (refresh, fonts), then polish video, then the feel of the site, then trustworthy data.
 
 | Task | Name | Status |
 |---|---|---|
