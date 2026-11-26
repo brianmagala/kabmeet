@@ -1,6 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import type { SessionEngagementStats, UserEngagement } from './engagement';
+import type { EventsData } from './events';
 import type {
   AttendanceRecord,
   AuthUser,
@@ -61,6 +62,8 @@ export interface KabmeetStoreData {
   engagement?: Record<string, UserEngagement>;
   /** Watch time, reactions and viewers over time per session id. Missing in older stores. */
   sessionStats?: Record<string, SessionEngagementStats>;
+  /** Events, hackathon teams, scores and certificates (server/events.ts). Missing in older stores. */
+  eventsData?: EventsData;
 }
 
 const DATA_DIR = process.env.KABMEET_DATA_DIR

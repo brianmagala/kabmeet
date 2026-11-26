@@ -19,6 +19,7 @@ import {
   getSummary,
   setLeaderboardOptIn,
 } from './server/engagement';
+import { registerEventRoutes } from './server/events';
 import { store, type StoredUser } from './server/store';
 import { getVideoProvider } from './server/video';
 import {
@@ -1041,6 +1042,15 @@ async function startServer() {
 
     store.save();
     res.json({ user: sanitizeUser(user) });
+  });
+
+  // --- Task 16: events, hackathon and certificates (server/events.ts) ---
+  registerEventRoutes({
+    app,
+    requireAuth,
+    requireRoles,
+    optionalUser: (req) => resolveAuthUser(req)?.user ?? null,
+    rateLimit,
   });
 
   // --- Task 14: engagement (badges, streaks, leaderboard, host stats) ---
