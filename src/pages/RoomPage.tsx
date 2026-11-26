@@ -149,6 +149,14 @@ export function RoomPage() {
     apiFetch,
   });
 
+  // With no media server, camera/mic/screen still start locally. Say once that nobody else can see or hear them.
+  const localOnlyToldRef = useRef(false);
+  const tellIfLocalOnly = useCallback(() => {
+    if (video.status !== 'unconfigured' || localOnlyToldRef.current) return;
+    localOnlyToldRef.current = true;
+    pushToast('Video is not set up on this server, so others cannot see or hear you.', 'info');
+  }, [video.status, pushToast]);
+
   const explainMediaError = (err: unknown, deviceLabel: 'Camera' | 'Microphone'): string => {
     if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
       return `${deviceLabel} access requires a secure HTTPS browser context.`;
@@ -260,6 +268,7 @@ export function RoomPage() {
           pushToast(msg, 'error');
           return;
         }
+        tellIfLocalOnly();
         cameraStreamRef.current?.getTracks().forEach((t) => t.stop());
         cameraStreamRef.current = stream;
         if (!screenSharing) {
@@ -284,7 +293,7 @@ export function RoomPage() {
       setCamOn(false);
       emit('room:media_state', { camOn: false });
     }
-  }, [camOn, screenSharing, dataSaver, myParticipant?.isSpeaker, emit, pushToast, video]);
+  }, [camOn, screenSharing, dataSaver, myParticipant?.isSpeaker, emit, pushToast, video, tellIfLocalOnly]);
 
   // Toggle Microphone independently of Camera
   const toggleMic = useCallback(async () => {
@@ -320,6 +329,7 @@ export function RoomPage() {
             pushToast(msg, 'error');
             return;
           }
+          tellIfLocalOnly();
           audioStreamRef.current = stream;
         } catch (err) {
           const msg = explainMediaError(err, 'Microphone');
@@ -339,7 +349,7 @@ export function RoomPage() {
     }
     setMicOn(next);
     emit('room:media_state', { micOn: next, speaking: false });
-  }, [micOn, myParticipant?.isSpeaker, myParticipant?.mutedByHost, emit, pushToast, video]);
+  }, [micOn, myParticipant?.isSpeaker, myParticipant?.mutedByHost, emit, pushToast, video, tellIfLocalOnly]);
 
   const handlePickSlideImage = useCallback(
     (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -411,6 +421,7 @@ export function RoomPage() {
           pushToast(msg, 'error');
           return;
         }
+        tellIfLocalOnly();
         screenStreamRef.current?.getTracks().forEach((t) => t.stop());
         screenStreamRef.current = display;
         setActiveVideoStream(display);
@@ -461,7 +472,7 @@ export function RoomPage() {
       setScreenSharing(false);
       emit('room:media_state', { screenSharing: false });
     }
-  }, [screenSharing, sharedSlideUrl, myParticipant?.isSpeaker, emit, pushToast, video]);
+  }, [screenSharing, sharedSlideUrl, myParticipant?.isSpeaker, emit, pushToast, video, tellIfLocalOnly]);
 
   const toggleRaiseHand = useCallback(() => {
     if (!myParticipant) return;

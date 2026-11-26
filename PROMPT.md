@@ -334,6 +334,17 @@ Broadcast mode for 150+ viewers (HLS for the audience), live captions (Whisper),
 Template, newest report on top. Be honest and specific.
 
 ```
+### Report: Fix "camera, microphone and screen share do not start", 2026-11-26, Claude Sonnet 5.5 (Executor)
+Branch: fix-media-without-livekit (from main b8fec26). Not a numbered task; requested directly by Brian.
+Cause (reproduced in headless Chromium): when `LIVEKIT_URL/KEY/SECRET` are not set, my Task 1 client refused every capture with "Video is not connected yet", stopped the tracks, and showed an error. So on a server without LiveKit the Cam, Mic and Screen buttons all looked broken. This is item 5 of the Task 1b list.
+Done:
+- `src/video/useRoomVideo.ts`: when status is `unconfigured`, `publish()` succeeds locally (nothing is sent). When LiveKit is configured but not connected yet, the message now says to wait and retry. The returned object is memoised (Task 1b item 6) so `video` no longer changes every render.
+- `src/pages/RoomPage.tsx`: shows one info toast, "Video is not set up on this server, so others cannot see or hear you."
+Verified: `npx tsc --noEmit`, `npm test` 18/18, built app + headless Chromium with fake devices, no LiveKit: V and M start with only the info toast, screen share starts, the local video tile plays (1280 px wide).
+Not verified: the same flow with LiveKit on after this change (unchanged code path, tested in Task 1), real webcams, Safari/Firefox, phones.
+Other causes Brian may hit that are NOT bugs: (1) a MEMBER must have a raised hand approved by the host before camera/mic/screen work (the Room says so); (2) browsers block camera, microphone and screen capture on plain `http://` pages except localhost, so production must be `https://`; (3) screen share is not offered on most phone browsers. To let other people actually see each other, set up LiveKit (docs/DEPLOYMENT.md section 2).
+Ready for review: yes
+
 ### Report: Task <n>, <date>, <model name>
 Branch: task-<n>-<name>
 Side fixes outside the task (name them): ...

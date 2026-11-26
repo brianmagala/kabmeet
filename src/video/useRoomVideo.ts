@@ -3,7 +3,7 @@
 // and gives back what other people send. Nothing here decides who may publish: the server does,
 // through the token it issues and live rights updates. If the server refuses, publishing fails
 // and we say so instead of pretending it worked.
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Room, RoomEvent, Track } from 'livekit-client';
 import type { RemoteTrack, RemoteTrackPublication, RemoteParticipant } from 'livekit-client';
 
@@ -43,6 +43,8 @@ export function useRoomVideo({ sessionId, enabled, audioOnly, apiFetch }: Option
   const [remoteVideo, setRemoteVideo] = useState<Record<string, RemoteVideoTracks>>({});
   const [activeSpeakers, setActiveSpeakers] = useState<string[]>([]);
   const roomRef = useRef<Room | null>(null);
+  const statusRef = useRef<VideoStatus>('idle');
+  statusRef.current = status;
   const audioOnlyRef = useRef(audioOnly);
   audioOnlyRef.current = audioOnly;
   const apiFetchRef = useRef(apiFetch);
@@ -162,8 +164,11 @@ export function useRoomVideo({ sessionId, enabled, audioOnly, apiFetch }: Option
   }, [audioOnly]);
 
   const publish = useCallback(async (track: MediaStreamTrack, source: PublishSource): Promise<string | null> => {
+    // No media server on this site: the person can still turn on their own camera, microphone and screen
+    // (they see themselves), but nothing is sent. The Room tells them once that others cannot see them.
+    if (statusRef.current === 'unconfigured') return null;
     const room = roomRef.current;
-    if (!room || room.state !== 'connected') return 'Video is not connected yet.';
+    if (!room || room.state !== 'connected') return 'Video is not connected yet. Wait a moment and try again.';
     try {
       await room.localParticipant.publishTrack(track, {
         source: SOURCE_MAP[source],
@@ -183,5 +188,8 @@ export function useRoomVideo({ sessionId, enabled, audioOnly, apiFetch }: Option
     if (pub?.track) await room.localParticipant.unpublishTrack(pub.track, false).catch(() => {});
   }, []);
 
-  return { status, message, remoteVideo, activeSpeakers, publish, unpublish };
+  return useMemo(
+    () => ({ status, message, remoteVideo, activeSpeakers, publish, unpublish }),
+    [status, message, remoteVideo, activeSpeakers, publish, unpublish],
+  );
 }
