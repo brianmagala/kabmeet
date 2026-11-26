@@ -844,7 +844,7 @@ function issueCertificate(ev: EventRecord, user: StoredUser, kind: CertificateKi
   let code = '';
   for (let attempt = 0; attempt < 100 && (!code || taken.has(code)); attempt += 1) {
     let tail = '';
-    for (let i = 0; i < 4; i += 1) tail += JOIN_CODE_ALPHABET[randomInt(JOIN_CODE_ALPHABET.length)];
+    for (let i = 0; i < 6; i += 1) tail += JOIN_CODE_ALPHABET[randomInt(JOIN_CODE_ALPHABET.length)];
     code = `KAB-${year}-${tail}`;
   }
   if (taken.has(code)) throw new Error('Could not make a free certificate code.');
@@ -926,7 +926,7 @@ function registerCertificateRoutes(deps: EventDeps): void {
   // Public: anyone with a code can check it. Only name, event, date and kind come back.
   app.get('/api/verify/:code', (req, res) => {
     const code = String(req.params.code).trim().toUpperCase();
-    const cert = /^KAB-\d{4}-[A-Z0-9]{4}$/.test(code) ? eventsData().certificates.find((c) => c.code === code) : undefined;
+    const cert = /^KAB-\d{4}-[A-Z0-9]{4,6}$/.test(code) ? eventsData().certificates.find((c) => c.code === code) : undefined;
     const ev = cert ? eventsData().events.find((e) => e.id === cert.eventId) : undefined;
     if (!cert || !ev) {
       res.status(404).json({ valid: false, message: 'No certificate matches that code.' });

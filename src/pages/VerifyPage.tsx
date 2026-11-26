@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { BadgeCheck, ShieldX } from 'lucide-react';
-import { formatRange } from '../lib/eventFormat';
+import { formatDayShort } from '../lib/eventFormat';
 import type { CertificateKind, VerifyResult } from '../shared/events';
 
 const KIND_TEXT: Record<CertificateKind, string> = {
@@ -56,7 +56,7 @@ export function VerifyPage({ code }: { code: string }) {
               <div><dt className="text-muted">Awarded to</dt><dd className="font-bold">{result.name}</dd></div>
               <div><dt className="text-muted">Type</dt><dd>{KIND_TEXT[result.kind]}</dd></div>
               <div><dt className="text-muted">Event</dt><dd>{result.eventTitle}</dd></div>
-              <div><dt className="text-muted">Date</dt><dd>{formatRange(result.eventDate, result.eventDate).replace(/,.*$/, '')}</dd></div>
+              <div><dt className="text-muted">Date</dt><dd>{formatDayShort(result.eventDate)}</dd></div>
             </dl>
           </div>
         )}

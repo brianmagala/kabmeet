@@ -512,7 +512,7 @@ describe('certificates', () => {
     assert.match(pdf.getTitle() ?? '', /Edwin Student/);
     const st = await status(day.id, T.e.token);
     code = st.json.code;
-    assert.match(code, /^KAB-\d{4}-[A-HJ-NP-Z2-9]{4}$/);
+    assert.match(code, /^KAB-\d{4}-[A-HJ-NP-Z2-9]{6}$/);
     await download(day.id, T.e.token);
     assert.equal((await status(day.id, T.e.token)).json.code, code, 'same person, same code');
   });
