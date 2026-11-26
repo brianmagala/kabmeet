@@ -5,6 +5,8 @@ import { AuthPage } from './pages/AuthPage';
 import { ClassesPage } from './pages/ClassesPage';
 import { CommunitiesPage } from './pages/CommunitiesPage';
 import { DiscoverPage } from './pages/DiscoverPage';
+import { EventPage } from './pages/EventPage';
+import { EventsPage } from './pages/EventsPage';
 import { LeaderboardPage } from './pages/LeaderboardPage';
 import { HostPanelPage } from './pages/HostPanelPage';
 import { ProfilePage } from './pages/ProfilePage';
@@ -27,6 +29,10 @@ function KabmeetRouter() {
       return <ClassesPage />;
     case 'host-panel':
       return <HostPanelPage />;
+    case 'events':
+      return <EventsPage />;
+    case 'event':
+      return <EventPage />;
     case 'leaderboard':
       return <LeaderboardPage />;
     case 'profile':

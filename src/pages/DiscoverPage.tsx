@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useState } from 'react';
 import { Play, Plus, Radio, X } from 'lucide-react';
 import { useKabmeet } from '../context/KabmeetContext';
 import { HomeSearchBar } from '../components/HomeSearchBar';
+import { EventSoonCard } from '../components/EventSoonCard';
 import { LiveCountdown } from '../components/LiveCountdown';
 import { SessionCard } from '../components/SessionCard';
 import { KabmeetSignalPrism } from '../components/KabmeetLoader';
@@ -230,6 +231,8 @@ export function DiscoverPage() {
           />
         </div>
       </section>
+
+      <EventSoonCard />
 
       {/* Section Title & Filters */}
       <section className="mt-8 flex flex-col gap-4 md:flex-row md:items-center md:justify-between">

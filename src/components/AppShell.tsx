@@ -9,6 +9,7 @@ import {
   Play,
   Radio,
   Sun,
+  Trophy,
   UserCircle2,
   Users,
   WifiOff,
@@ -118,6 +119,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const navLinks: Array<{ key: AppRoute; label: string; visible: boolean }> = [
     { key: 'discover', label: 'Discover', visible: true },
     { key: 'communities', label: 'Communities', visible: true },
+    { key: 'events', label: 'Events', visible: true },
     { key: 'classes', label: 'Classes', visible: role !== 'VISITOR' },
     { key: 'leaderboard', label: 'Leaderboard', visible: role !== 'VISITOR' },
     {
@@ -131,6 +133,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const mobileTabs: Array<{ key: AppRoute; label: string; icon: typeof Radio }> = [
     { key: 'discover', label: 'Discover', icon: Radio },
     { key: 'communities', label: 'Clubs', icon: Users },
+    { key: 'events', label: 'Events', icon: Trophy },
     { key: 'classes', label: 'Classes', icon: CalendarDays },
     { key: 'watch', label: 'Watch', icon: Play },
   ];
@@ -175,7 +178,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             {navLinks
               .filter((l) => l.visible)
               .map((link) => {
-                const active = route === link.key;
+                const active = route === link.key || (link.key === 'events' && route === 'event');
                 return (
                   <button
                     key={link.key}
@@ -320,10 +323,10 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         aria-label="Mobile bottom navigation"
         className="fixed bottom-0 left-0 right-0 z-40 border-t border-amber-gold/35 bg-indaba-deep-green text-white md:hidden"
       >
-        <div className="grid h-16 grid-cols-4 items-center">
+        <div className="grid h-16 grid-cols-5 items-center">
           {mobileTabs.map((tab) => {
             const Icon = tab.icon;
-            const active = route === tab.key;
+            const active = route === tab.key || (tab.key === 'events' && route === 'event');
             return (
               <button
                 key={tab.key}

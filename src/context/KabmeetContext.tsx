@@ -18,6 +18,8 @@ export type AppRoute =
   | 'host-panel'
   | 'profile'
   | 'leaderboard'
+  | 'events'
+  | 'event'
   | 'admin'
   | 'auth';
 
@@ -33,7 +35,12 @@ interface KabmeetContextValue {
   route: AppRoute;
   activeSessionId: string;
   activeCommunitySlug: string | null;
-  navigate: (route: AppRoute, opts?: { sessionId?: string; communitySlug?: string | null }) => void;
+  /** The event shown on the 'event' screen (its slug). */
+  activeEventSlug: string | null;
+  navigate: (
+    route: AppRoute,
+    opts?: { sessionId?: string; communitySlug?: string | null; eventSlug?: string | null },
+  ) => void;
 
   user: AuthUser | null;
   role: UserRole;
@@ -100,6 +107,7 @@ export function KabmeetProvider({ children }: { children: React.ReactNode }) {
   const [route, setRoute] = useState<AppRoute>('discover');
   const [activeSessionId, setActiveSessionId] = useState<string>('sess-ml-python');
   const [activeCommunitySlug, setActiveCommunitySlug] = useState<string | null>(null);
+  const [activeEventSlug, setActiveEventSlug] = useState<string | null>(null);
 
   // Access token kept strictly in React memory (never localStorage/sessionStorage)
   const [accessToken, setAccessToken] = useState<string | null>(null);
@@ -319,9 +327,10 @@ export function KabmeetProvider({ children }: { children: React.ReactNode }) {
   const navigate = useCallback(
     (
       nextRoute: AppRoute,
-      opts?: { sessionId?: string; communitySlug?: string | null },
+      opts?: { sessionId?: string; communitySlug?: string | null; eventSlug?: string | null },
     ) => {
       if (opts?.sessionId) setActiveSessionId(opts.sessionId);
+      if (opts && 'eventSlug' in opts) setActiveEventSlug(opts.eventSlug ?? null);
       if (opts && 'communitySlug' in opts) setActiveCommunitySlug(opts.communitySlug ?? null);
       setIsNavigating(true);
       if (navTimerRef.current) window.clearTimeout(navTimerRef.current);
@@ -450,6 +459,7 @@ export function KabmeetProvider({ children }: { children: React.ReactNode }) {
       route,
       activeSessionId,
       activeCommunitySlug,
+      activeEventSlug,
       navigate,
       user,
       role: user?.role ?? 'VISITOR',
@@ -484,6 +494,7 @@ export function KabmeetProvider({ children }: { children: React.ReactNode }) {
       route,
       activeSessionId,
       activeCommunitySlug,
+      activeEventSlug,
       navigate,
       user,
       accessToken,
