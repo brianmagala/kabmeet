@@ -5,14 +5,20 @@ import { AuthPage } from './pages/AuthPage';
 import { ClassesPage } from './pages/ClassesPage';
 import { CommunitiesPage } from './pages/CommunitiesPage';
 import { DiscoverPage } from './pages/DiscoverPage';
+import { EventPage } from './pages/EventPage';
+import { EventsPage } from './pages/EventsPage';
 import { LeaderboardPage } from './pages/LeaderboardPage';
 import { HostPanelPage } from './pages/HostPanelPage';
 import { ProfilePage } from './pages/ProfilePage';
 import { RoomPage } from './pages/RoomPage';
+import { VerifyPage } from './pages/VerifyPage';
 import { WatchPage } from './pages/WatchPage';
 
 function KabmeetRouter() {
   const { route } = useKabmeet();
+  // Public certificate check. Client-only because main has no URL router yet (Task 7).
+  const verifyMatch = /^\/verify\/([A-Za-z0-9-]{3,40})\/?$/.exec(window.location.pathname);
+  if (verifyMatch) return <VerifyPage code={verifyMatch[1].toUpperCase()} />;
 
   switch (route) {
     case 'discover':
@@ -27,6 +33,10 @@ function KabmeetRouter() {
       return <ClassesPage />;
     case 'host-panel':
       return <HostPanelPage />;
+    case 'events':
+      return <EventsPage />;
+    case 'event':
+      return <EventPage />;
     case 'leaderboard':
       return <LeaderboardPage />;
     case 'profile':

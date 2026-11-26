@@ -5,7 +5,7 @@ The communication link between the **Master** (Claude: planner, reviewer, approv
 ## 0. Executor quick start (read this first)
 
 1. Read this whole file. Then read section 5 (status) and section 6 (known issues), because they save you from rediscovering things.
-2. **This round's assignment from the Master: Task 16 (status `ASSIGNED`).** Do that one, even though it is not first in the priority order. In later rounds, take the first task in the priority order of section 7 that is `OPEN`. One task per round.
+2. Take the first task in the priority order of section 7 that is `OPEN`. One task per round.
 3. Work on a branch named `task-<number>-<short-name>`. **Never push to `main`.** The Master merges.
 4. Install with `bun install`. Check with `npx tsc --noEmit && npx vite build && npm test`.
 5. Write your report in section 10 using the template there. Change only the status word of your own task.
@@ -105,7 +105,7 @@ Status words: `OPEN` > `IN PROGRESS` > `READY FOR REVIEW` > `VERIFIED` (or `REWO
 
 ## 7. Task queue and priority order (kept by the Master)
 
-**Order of work:** 16 (assigned this round) > 7 > 8 > 1b > 4b > 14b > 9 > 10 > 15 > 6 > 11 > 13 > 12 > 2 > 3 (3 needs Brian). Reason: fix what hurts every user first (refresh, fonts), then polish video, then the feel of the site, then trustworthy data.
+**Order of work:** 7 (branch waiting for review) > 8 > 1b > 4b > 14b > 9 > 10 > 15 > 6 > 11 > 13 > 12 > 2 > 3 (3 needs Brian). Reason: fix what hurts every user first (refresh, fonts), then polish video, then the feel of the site, then trustworthy data.
 
 | Task | Name | Status |
 |---|---|---|
@@ -125,7 +125,7 @@ Status words: `OPEN` > `IN PROGRESS` > `READY FOR REVIEW` > `VERIFIED` (or `REWO
 | 13 | Notifications: "going live" push and reminders | `OPEN` |
 | 14 | Engagement: badges, streaks, leaderboard, session analytics | `VERIFIED` (built and tested by the Master) |
 | 15 | Offline-first: queue chat sends, cached lists | `OPEN` |
-| 16 | Hackathon and IndabaX mode: schedule, teams, judges, certificates | `ASSIGNED` (next executor, branch `task-16-events`) |
+| 16 | Hackathon and IndabaX mode: schedule, teams, judges, certificates | `VERIFIED` (follow-ups 16b) |
 
 ---
 
@@ -240,7 +240,7 @@ Built by the Master on 2026-11-26. Typecheck, build and 33 of 33 tests pass; che
 2. Cache the last Discover and Communities lists in the service worker so they open instantly and refresh quietly (stale-while-revalidate).
 **Verify with:** DevTools Offline; send 3 messages; go online; they arrive once and in order (no duplicates).
 
-### Task 16: Hackathon and IndabaX mode (`ASSIGNED`: executor, branch `task-16-events`)
+### Task 16: Hackathon and IndabaX mode (`VERIFIED`; follow-ups 16b at the end of this section)
 **Goal:** run a whole event on Kabmeet, not just a stream. Think: the IndabaX day at Kabale University with 4 sessions, a hackathon with teams, judges and a certificate at the end. Make it the feature people show to visitors.
 
 **Branch protocol (as always):** work on `task-16-events`, never push to `main`, small commits, write your report in section 10 when done. The Master verifies and merges.
@@ -276,6 +276,15 @@ Built by the Master on 2026-11-26. Typecheck, build and 33 of 33 tests pass; che
 **Tests (required, add `tests/events.test.ts` to the `npm test` script):** member cannot create an event (403); draft events are hidden from members; team join code works once per person; a person cannot join two teams in one event; judge cannot score own team; scores are hidden before reveal and visible after; certificate refused under 50 percent attendance and issued above it; `/api/verify/:code` shows no email. Run `npx tsc --noEmit && npx vite build && npm test` before you report.
 
 **Report (in section 10, under a heading "Task 16 report"):** what you built, what you could not finish, every decision you made that the Master should check, screenshots you took (describe them), anything in this brief that was wrong or unclear, and your suggestion for the next task.
+
+**Master verdict on Task 16 (2026-11-26):** verified. Typecheck, build and 65 of 65 tests pass on the branch. In a real browser the Master ran: Events list, event page with countdown, "Add to calendar" (.ics downloads), "Event soon" card on Discover, start-a-team form, ended-event certificate (PDF downloads and looks good), public `/verify/<code>` page and a bad code. Two Master fixes were added on top: (1) the verify page showed the date as just "Wed" (a regex cut the text); it now shows "Wed 25 Nov 2026"; (2) certificate codes are now 6 random characters (`KAB-2026-XXXXXX`) instead of 4, because 4 can be guessed; old 4-character codes still verify. Decisions the executor asked about: all accepted as written (host edits own events, winners need no attendance, judge comments never shown, reveal is final, judges added by email, certificate name fixed at issue).
+
+**Task 16b (small follow-ups):**
+1. Names outside Latin-1 print as "?" in the PDF. Embed a Unicode font (for example Noto Sans) with `@pdf-lib/fontkit`.
+2. After downloading a certificate the card shows only the code, centred; keep the Download button visible and left-align the code.
+3. Merge with Task 7 (real URLs) and move `events`, `event` and `/verify/<code>` to real routes. Branch `task-7-urls-session` exists and has not been reviewed yet.
+4. Click-through of the judge scoring and reveal screens in a browser (the API side is tested, the screens were only type-checked).
+5. The mobile header is about 399 px wide on a 390 px phone, so the right-hand icon is cut off and the page scrolls sideways (also listed under Task 14b).
 
 ### Task 5: Tests for the rules that matter (`VERIFIED`)
 `tests/api.test.ts` and `tests/video.test.ts` run with `npm test` (18 tests) and in CI. Every task adds tests for its own rules. Still missing: websocket role checks, class attendance rules (Task 6).
@@ -377,6 +386,7 @@ Broadcast mode for 150+ viewers (HLS for the audience), live captions (Whisper),
 - 2026-11-25: **Task 4 done by the Master** (Kabmeet Loading Kit artifact). Six moment loaders plus staged waits, checked in a browser with throttled APIs; typecheck, build and 18 of 18 tests pass. Decision: Signal Prism stays the single page loader, `TopNetworkBar` is the top thread, and slow-network messaging is not duplicated (AppShell banner owns the Data saver offer). Follow-ups in Task 4b.
 - 2026-11-25: **New ideas added after research** (LiveKit Egress, higher-ed streaming feature lists, PWA offline and push practice, event engagement tools): Tasks 11 to 16. Order puts offline (15) before recordings (11) because campus networks drop first.
 - 2026-11-26: **Task 14 done by the Master** (badges, weekly streaks, opt-in leaderboard, host session stats). See the Task 14 section for the rules decided. Browser check caught one bug before shipping: the Host Panel's connection was counted as a viewer and earned a badge. Fixed with `?monitor=1`, covered by a test. **Next executor: Task 16** (brief is in its section). Master verifies when Brian says so.
+- 2026-11-26: **Task 16 verified and merged** (events, hackathon, certificates). Executor's report was honest and complete. Two Master fixes on top (verify-page date, longer certificate codes). Note: an unreviewed branch `task-7-urls-session` (real URLs, cookie sign-in, CSRF) is on GitHub; review it next because Tasks 14 and 16 added routes it must include.
 - Open decision for Brian: Task 3 (one codebase at the root, recommended).
 
 ---
@@ -402,6 +412,37 @@ Suggestions:
 Verify with: <the exact commands>
 Ready for review: yes / no
 ```
+
+### Report: Task 16, 2026-11-26, Claude Sonnet 5.5 (Executor) | Master verdict: VERIFIED (2026-11-26)
+Branch: task-16-events (from main 333c7e6; pushed; main untouched)
+Side fixes outside the task (name them): none. Added dependency `pdf-lib` (package.json, bun.lock).
+Done:
+- Step 1, events: `server/events.ts` (list, detail by slug, create, edit, draft/published, private-class sessions hidden), `src/shared/events.ts`, Events nav link and mobile tab, EventsPage, EventPage (schedule by day in Kabale time, speakers, countdown, "Add to calendar" .ics with 15 min alarm), EventEditor, "Event soon" card on Discover.
+- Step 2, hackathon: teams (max 5, join by code), submission link, demo slots, judges added by email, scoring on four criteria, host-only reveal, ranking with tie handling. Judges see all teams; scores and comments are private until reveal; team code is visible only to team members and the host.
+- Step 3, certificates: PDF (pdf-lib, A4 landscape) for ATTENDANCE (attended at least 50% of the event's public sessions, from Task 14 engagement data), WINNER and RUNNER_UP (revealed ranking, no attendance needed). Code `KAB-YYYY-XXXX`, same code on repeat downloads, public `GET /api/verify/:code` (rate limited, returns only name, event, date, kind). Certificate card on the event page and a public `/verify/<code>` page.
+- `tests/events.test.ts`: 32 tests, in the npm test script.
+- Last run on the final commit: `bun install`, `npx tsc --noEmit`, `npx vite build`, `npm test` all pass (65 tests, 0 fail).
+Half-done (and exactly where I stopped):
+- Nothing cut. The certificate card and verify page got only a build/type check, not a browser run.
+Could not run / not verified:
+- Certificate UI and /verify page not clicked through in a browser. Certificate PDFs were rendered to PNG and checked by eye (attendance and winner variants).
+- Names with characters outside Latin-1 print as "?" in the PDF (standard fonts only).
+- Verified at 360 px for the events pages; at 390 px signed in there is a sideways scroll that comes from the existing header (about 399 px wide), not from this task.
+Problems or things that look wrong elsewhere:
+- Task 7 is not merged, so there are no URL routes. Events use `AppRoute` 'events' | 'event' plus `navigate(route, {eventSlug})`; `/verify/<code>` is matched in App.tsx from window.location. This will conflict with Task 7 and needs a merge pass; no deep links to events until then.
+- Mobile tab bar went from 4 to 5 tabs (grid-cols-5).
+- Verify code has only 4 random characters, so it can be guessed. Mitigated by 40 requests per minute per IP and by exposing only name, event, date and kind. Master to decide if it should be longer.
+Decisions for the Master to check:
+- Hosts edit only their own events; admins edit any.
+- Winners need no attendance.
+- Judge comments are never shown after reveal; reveal cannot be undone.
+- Judges are added by email, so a host can learn whether an email has an account.
+- Judges may also be on a team.
+- Certificate name is stored at issue time and does not change if the profile changes.
+Suggestions:
+- Merge Task 7 first or next, then move events and verify to real URLs.
+Verify with: bun install && npx tsc --noEmit && npx vite build && npm test
+Ready for review: yes
 
 ### Report: Task 1, 2026-11-24, Claude Sonnet 5.5 (Executor) | Master verdict: VERIFIED (2026-11-25)
 Branch: task-1-livekit-video (from main 9a1dd14)
