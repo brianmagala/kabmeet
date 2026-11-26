@@ -1,6 +1,15 @@
 import type { Server as HttpServer } from 'node:http';
 import { WebSocket, WebSocketServer } from 'ws';
 import { hashToken, isStaffOrHost } from './auth';
+import {
+  presenceEnter,
+  presenceLeave,
+  recordChat,
+  recordPollVote,
+  recordQuestion,
+  recordReaction,
+  setAwardNotifier,
+} from './engagement';
 import { store, type StoredUser } from './store';
 import { getVideoProvider, type PublishRights } from './video';
 import type {
@@ -17,6 +26,10 @@ interface ClientMeta {
   sessionId: string;
   user: StoredUser | null;
   lastChatAt: number;
+  /** Who engagement is counting this connection for (null = visitor). Kept in step with `user`. */
+  presenceUserId: string | null;
+  /** The Host Panel watches the room to moderate it. That is not the same as attending. */
+  monitor: boolean;
 }
 
 const roomParticipants = new Map<string, Map<string, RoomParticipant>>();
@@ -30,6 +43,24 @@ function getSessionUsers(sessionId: string): Set<ClientMeta> {
     sessionClients.set(sessionId, set);
   }
   return set;
+}
+
+/** How many connections are open in a session right now. */
+export function getLiveViewerCount(sessionId: string): number {
+  let n = 0;
+  for (const c of sessionClients.get(sessionId) ?? []) if (!c.monitor) n++;
+  return n;
+}
+
+/** After sign-in or sign-out on an open connection, move engagement's count to the new person. */
+function switchPresenceUser(meta: ClientMeta): void {
+  if (meta.monitor) return;
+  const next = meta.user?.id ?? null;
+  if (meta.presenceUserId === next) return;
+  const viewers = getLiveViewerCount(meta.sessionId);
+  presenceLeave(meta.sessionId, meta.presenceUserId, viewers);
+  presenceEnter(meta.sessionId, next, viewers);
+  meta.presenceUserId = next;
 }
 
 function getRoomParticipants(sessionId: string): Map<string, RoomParticipant> {
@@ -170,11 +201,22 @@ export function attachWebSocketServer(httpServer: HttpServer): void {
   // Room slides are sent as images (up to 550 KB of text), so the limit sits just above that.
   const wss = new WebSocketServer({ server: httpServer, path: '/ws', maxPayload: 640 * 1024 });
 
+  // Badges and streaks are told to the person on every connection they have open.
+  setAwardNotifier((userId, notice) => {
+    const packet = JSON.stringify({ event: 'engagement:award', payload: notice });
+    for (const set of sessionClients.values()) {
+      for (const c of set) {
+        if (c.user?.id === userId && c.ws.readyState === WebSocket.OPEN) c.ws.send(packet);
+      }
+    }
+  });
+
   wss.on('connection', (ws, req) => {
     const reqUrl = new URL(req.url ?? '/ws', 'http://localhost');
     const sessionId = reqUrl.searchParams.get('sessionId') ?? '';
     const token = reqUrl.searchParams.get('token');
     const user = resolveUserFromToken(token);
+    const monitor = reqUrl.searchParams.get('monitor') === '1';
 
     if (!sessionId || !canUserAccessSession(sessionId, user)) {
       sendError(ws, 'You do not have permission to enter this session.');
@@ -189,10 +231,13 @@ export function attachWebSocketServer(httpServer: HttpServer): void {
       sessionId,
       user,
       lastChatAt: 0,
+      presenceUserId: monitor ? null : (user?.id ?? null),
+      monitor,
     };
 
     const clients = getSessionUsers(sessionId);
     clients.add(meta);
+    if (!meta.monitor) presenceEnter(sessionId, meta.presenceUserId, getLiveViewerCount(sessionId));
 
     // Update session live viewer count
     const sess = store.state.sessions.find((s) => s.id === sessionId);
@@ -237,6 +282,7 @@ export function attachWebSocketServer(httpServer: HttpServer): void {
 
       if (event === 'auth:refresh') {
         meta.user = resolveUserFromToken(typeof payload.token === 'string' ? payload.token : null);
+        switchPresenceUser(meta);
         return;
       }
 
@@ -289,6 +335,7 @@ export function attachWebSocketServer(httpServer: HttpServer): void {
         };
         if (!store.state.messages[sessionId]) store.state.messages[sessionId] = [];
         store.state.messages[sessionId].push(msg);
+        recordChat(actor.id, sessionId);
         store.save();
         broadcastToSession(sessionId, 'chat:message', msg);
         return;
@@ -318,6 +365,7 @@ export function attachWebSocketServer(httpServer: HttpServer): void {
           typeof payload.id === 'string' && /^[a-zA-Z0-9_-]{4,48}$/.test(payload.id)
             ? payload.id
             : `rxn-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
+        recordReaction(sessionId);
         broadcastToSession(sessionId, 'reaction:heart', {
           id: burstId,
           emoji,
@@ -395,6 +443,7 @@ export function attachWebSocketServer(httpServer: HttpServer): void {
         };
         if (!store.state.questions[sessionId]) store.state.questions[sessionId] = [];
         store.state.questions[sessionId].push(q);
+        recordQuestion(actor.id, sessionId);
         store.save();
         broadcastToSession(sessionId, 'qa:updated', store.state.questions[sessionId]);
         return;
@@ -473,6 +522,7 @@ export function attachWebSocketServer(httpServer: HttpServer): void {
               opt.voterIds.push(actor.id);
             }
           }
+          recordPollVote(actor.id, sessionId, poll.id);
           store.save();
           broadcastToSession(sessionId, 'polls:updated', list);
         }
@@ -761,6 +811,8 @@ export function attachWebSocketServer(httpServer: HttpServer): void {
 
     ws.on('close', () => {
       clients.delete(meta);
+      if (!meta.monitor) presenceLeave(sessionId, meta.presenceUserId, getLiveViewerCount(sessionId));
+      meta.presenceUserId = null;
       const participants = getRoomParticipants(sessionId);
       const waiting = getWaitingMap(sessionId);
       const changedRoom = participants.delete(meta.clientId) || waiting.delete(meta.clientId);

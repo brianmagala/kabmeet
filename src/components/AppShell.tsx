@@ -119,6 +119,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     { key: 'discover', label: 'Discover', visible: true },
     { key: 'communities', label: 'Communities', visible: true },
     { key: 'classes', label: 'Classes', visible: role !== 'VISITOR' },
+    { key: 'leaderboard', label: 'Leaderboard', visible: role !== 'VISITOR' },
     {
       key: 'host-panel',
       label: 'Host Panel',

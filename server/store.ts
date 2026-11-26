@@ -1,5 +1,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
+import type { SessionEngagementStats, UserEngagement } from './engagement';
 import type {
   AttendanceRecord,
   AuthUser,
@@ -56,6 +57,10 @@ export interface KabmeetStoreData {
   reports: ModerationReport[];
   roleAuditLog: RoleAuditEntry[];
   siteFooter: SiteFooterConfig;
+  /** Badges, streaks and points per user id (server/engagement.ts). Missing in older stores. */
+  engagement?: Record<string, UserEngagement>;
+  /** Watch time, reactions and viewers over time per session id. Missing in older stores. */
+  sessionStats?: Record<string, SessionEngagementStats>;
 }
 
 const DATA_DIR = process.env.KABMEET_DATA_DIR
@@ -585,6 +590,8 @@ def softmax(logits):
       },
     ],
     siteFooter: createDefaultSiteFooter(),
+    engagement: {},
+    sessionStats: {},
   };
 }
 

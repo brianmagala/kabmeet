@@ -31,7 +31,7 @@ export function hashToken(token: string): string {
 export function getAllowedRoutesForRole(role: UserRole): string[] {
   const base = ['/', '/communities'];
   if (role === 'VISITOR') return base;
-  const member = [...base, '/watch', '/room', '/classes', '/profile'];
+  const member = [...base, '/watch', '/room', '/classes', '/profile', '/leaderboard'];
   if (role === 'HOST' || role === 'MODERATOR' || role === 'LECTURER') {
     return [...member, '/host-panel'];
   }

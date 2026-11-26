@@ -18,7 +18,9 @@ export interface FloatingHeart {
   userName?: string;
 }
 
-export function useSessionRealtime(sessionId: string) {
+/** `monitor: true` is for the Host Panel: it joins to moderate, so it never counts as a viewer or earns engagement. */
+export function useSessionRealtime(sessionId: string, options: { monitor?: boolean } = {}) {
+  const monitor = Boolean(options.monitor);
   const { accessToken, pushToast } = useKabmeet();
   const wsRef = useRef<WebSocket | null>(null);
   const [connected, setConnected] = useState(false);
@@ -37,6 +39,7 @@ export function useSessionRealtime(sessionId: string) {
       const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
       const params = new URLSearchParams({ sessionId });
       if (accessToken) params.set('token', accessToken);
+      if (monitor) params.set('monitor', '1');
       const url = `${protocol}//${window.location.host}/ws?${params.toString()}`;
       const ws = new WebSocket(url);
       wsRef.current = ws;
@@ -201,6 +204,13 @@ export function useSessionRealtime(sessionId: string) {
             );
             break;
           }
+          case 'engagement:award': {
+            const badges = (payload.badges as Array<{ emoji: string; name: string }> | undefined) ?? [];
+            for (const b of badges) pushToast(`${b.emoji} New badge: ${b.name}`, 'success');
+            const weeks = Number(payload.streakWeeks ?? 0);
+            if (weeks >= 2) pushToast(`🔥 ${weeks} weeks in a row. Keep it going!`, 'success');
+            break;
+          }
           case 'error': {
             const errMsg = String(payload.message ?? 'Action not permitted.');
             pushToast(errMsg, 'error');
@@ -231,7 +241,7 @@ export function useSessionRealtime(sessionId: string) {
       wsRef.current?.close();
       wsRef.current = null;
     };
-  }, [sessionId, accessToken, pushToast]);
+  }, [sessionId, accessToken, pushToast, monitor]);
 
   const emit = useCallback((event: string, payload: Record<string, unknown> = {}) => {
     const ws = wsRef.current;
