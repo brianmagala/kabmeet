@@ -116,7 +116,7 @@ Status words: `OPEN` > `IN PROGRESS` > `READY FOR REVIEW` > `VERIFIED` (or `REWO
 | 4 | Loading kit and slow-network stages | `VERIFIED` (follow-ups 4b below) |
 | 5 | Tests for the rules that matter | `VERIFIED` (extend with every task) |
 | 6 | Attendance you can trust | `OPEN` |
-| 7 | Real URLs and staying signed in | `OPEN` |
+| 7 | Real URLs and staying signed in | `BRANCH WAITING` (`task-7-urls-session` exists on GitHub, Master has not reviewed it; do not redo) |
 | 8 | Small fixes from the debug run | `OPEN` |
 | 9 | Campus emoji pack, stickers and microcopy | `OPEN` |
 | 10 | A site that feels alive: hover and motion polish | `OPEN` |
