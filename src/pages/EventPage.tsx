@@ -4,6 +4,7 @@ import { useKabmeet } from '../context/KabmeetContext';
 import { useLoadingStage } from '../hooks/useLoadingStage';
 import { SlowStageNotice } from '../components/KabmeetMoments';
 import { EventCountdown } from '../components/EventCountdown';
+import { CertificateCard } from '../components/CertificateCard';
 import { EventEditor } from '../components/EventEditor';
 import { HackathonPanel } from '../components/HackathonPanel';
 import { downloadIcs } from '../lib/ics';
@@ -212,6 +213,8 @@ export function EventPage() {
       )}
 
       {event.hackathon && event.status === 'PUBLISHED' && <HackathonPanel event={event} />}
+
+      <CertificateCard event={event} />
 
       {editing && (
         <EventEditor

@@ -11,10 +11,14 @@ import { LeaderboardPage } from './pages/LeaderboardPage';
 import { HostPanelPage } from './pages/HostPanelPage';
 import { ProfilePage } from './pages/ProfilePage';
 import { RoomPage } from './pages/RoomPage';
+import { VerifyPage } from './pages/VerifyPage';
 import { WatchPage } from './pages/WatchPage';
 
 function KabmeetRouter() {
   const { route } = useKabmeet();
+  // Public certificate check. Client-only because main has no URL router yet (Task 7).
+  const verifyMatch = /^\/verify\/([A-Za-z0-9-]{3,40})\/?$/.exec(window.location.pathname);
+  if (verifyMatch) return <VerifyPage code={verifyMatch[1].toUpperCase()} />;
 
   switch (route) {
     case 'discover':
