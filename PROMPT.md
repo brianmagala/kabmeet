@@ -105,7 +105,7 @@ Status words: `OPEN` > `IN PROGRESS` > `READY FOR REVIEW` > `VERIFIED` (or `REWO
 
 ## 7. Task queue and priority order (kept by the Master)
 
-**Order of work:** 7 (branch waiting for review) > 8 > 1b > 4b > 14b > 9 > 10 > 15 > 6 > 11 > 13 > 12 > 2 > 3 (3 needs Brian). Reason: fix what hurts every user first (refresh, fonts), then polish video, then the feel of the site, then trustworthy data.
+**Order of work:** 8 > 1b > 4b > 14b > 9 > 10 > 15 > 6 > 11 > 13 > 12 > 2 > 3 (3 needs Brian). Reason: fix what hurts every user first (refresh, fonts), then polish video, then the feel of the site, then trustworthy data.
 
 | Task | Name | Status |
 |---|---|---|
@@ -116,7 +116,7 @@ Status words: `OPEN` > `IN PROGRESS` > `READY FOR REVIEW` > `VERIFIED` (or `REWO
 | 4 | Loading kit and slow-network stages | `VERIFIED` (follow-ups 4b below) |
 | 5 | Tests for the rules that matter | `VERIFIED` (extend with every task) |
 | 6 | Attendance you can trust | `OPEN` |
-| 7 | Real URLs and staying signed in | `BRANCH WAITING` (`task-7-urls-session` exists on GitHub, Master has not reviewed it; do not redo) |
+| 7 | Real URLs and staying signed in | `VERIFIED` (merged with Tasks 14 and 16; follow-ups 7b) |
 | 8 | Small fixes from the debug run | `OPEN` |
 | 9 | Campus emoji pack, stickers and microcopy | `OPEN` |
 | 10 | A site that feels alive: hover and motion polish | `OPEN` |
@@ -298,7 +298,7 @@ Built by the Master on 2026-11-26. Typecheck, build and 33 of 33 tests pass; che
 **Not in scope:** emailing attendance.
 **Verify with:** a test that two tabs of one student count once; `npm test`.
 
-### Task 7: Real URLs and staying signed in (`OPEN`, first in line)
+### Task 7: Real URLs and staying signed in (`VERIFIED`; follow-ups 7b at the end of this section)
 **Goal:** refresh, Back and shared links work.
 1. URL routing: `/`, `/communities`, `/watch/:id`, `/room/:id`, `/classes`, `/host`, `/profile`, `/admin`, `/auth`. The Express fallback to `index.html` already exists.
 2. Stay signed in across refresh with an `httpOnly`, `SameSite=Lax`, `Secure` cookie session read by `resolveAuthUser`, with CSRF protection on state-changing routes. Do not put the token in `localStorage`.
@@ -306,6 +306,14 @@ Built by the Master on 2026-11-26. Typecheck, build and 33 of 33 tests pass; che
 **How to run and test:** sign in, open a room, refresh: still signed in on the same page; Back works; sign out clears the cookie.
 **Not in scope:** social login, password reset email.
 **Verify with:** tests for cookie flags, CSRF refusal and sign-out; browser run; `npm test`.
+
+**Master verdict on Task 7 (2026-11-27):** verified and merged. The executor's branch was built before Tasks 14 and 16, so the Master merged it by hand: added `/leaderboard`, `/events`, `/events/:slug` to `src/lib/routes.ts` (leaderboard needs sign-in, events are public), kept `activeEventSlug` in the context, switched the certificate download from the old bearer token to the cookie, and kept `/verify/<code>` from being rewritten to `/`. One hardening change: the same-origin check now also accepts `X-Forwarded-Host`, because nginx without `proxy_set_header Host $host` would otherwise make every sign-in fail with a CSRF error. 87 of 87 tests pass. Browser run on the merged app: signed-out `/leaderboard` goes to `/auth` and back after sign-in; refresh keeps the user; certificate PDF downloads with the cookie; Back/Forward walk `/events` and `/events/next-day`; the cookie is invisible to JavaScript.
+
+**Task 7b (follow-ups):**
+1. If the site is embedded in an iframe on another site (for example ai.kab.ac.ug/indabax embedding a Kabmeet page on a different registrable domain), `SameSite=Lax` cookies are not sent and sign-in will not stick. Same registrable domain (any `*.kab.ac.ug`) is fine. Decide the hosting address, then test it inside the real iframe. If a cross-site embed is needed, use `SameSite=None; Secure` plus the CSRF header.
+2. `document.title` per screen, and a "return to this link" when a signed-out person clicks a gated button.
+3. The register limiter (10 per hour per address) makes big test runs fail with 429. Add `KABMEET_TEST=1` to relax it.
+4. In the 360 px room the reaction bar covers the first tile and the Mic/Cam buttons. Put it in Task 10.
 
 ### Task 8: Small fixes from the debug run (`OPEN`)
 1. Websocket: authenticate with a first message, not the URL query. Keep the old way working during the change, then remove it.
@@ -387,6 +395,7 @@ Broadcast mode for 150+ viewers (HLS for the audience), live captions (Whisper),
 - 2026-11-25: **New ideas added after research** (LiveKit Egress, higher-ed streaming feature lists, PWA offline and push practice, event engagement tools): Tasks 11 to 16. Order puts offline (15) before recordings (11) because campus networks drop first.
 - 2026-11-26: **Task 14 done by the Master** (badges, weekly streaks, opt-in leaderboard, host session stats). See the Task 14 section for the rules decided. Browser check caught one bug before shipping: the Host Panel's connection was counted as a viewer and earned a badge. Fixed with `?monitor=1`, covered by a test. **Next executor: Task 16** (brief is in its section). Master verifies when Brian says so.
 - 2026-11-26: **Task 16 verified and merged** (events, hackathon, certificates). Executor's report was honest and complete. Two Master fixes on top (verify-page date, longer certificate codes). Note: an unreviewed branch `task-7-urls-session` (real URLs, cookie sign-in, CSRF) is on GitHub; review it next because Tasks 14 and 16 added routes it must include.
+- 2026-11-27: **Task 7 verified and merged** (real URLs, cookie sign-in, CSRF). Merged by hand with Tasks 14 and 16, plus a proxy-host hardening and `/verify` fix. 87 of 87 tests. See Task 7 verdict and 7b.
 - Open decision for Brian: Task 3 (one codebase at the root, recommended).
 
 ---
@@ -442,6 +451,35 @@ Decisions for the Master to check:
 Suggestions:
 - Merge Task 7 first or next, then move events and verify to real URLs.
 Verify with: bun install && npx tsc --noEmit && npx vite build && npm test
+Ready for review: yes
+
+### Report: Task 7, 2026-11-25, Claude Sonnet 5.5 (Executor) | Master verdict: VERIFIED (2026-11-27)
+Branch: task-7-urls-session (from main b8fec26)
+Side fixes outside the task (name them): the client no longer holds an `accessToken` at all (`ClassesPage` CSV export and `useSessionRealtime` used it; both now use the cookie). The context exposes `signedIn: boolean` instead of `accessToken`.
+Done:
+- **Cookie session** (`server/session-cookie.ts`, wired in `server.ts`): login, register and claim-admin set `kab_session` (httpOnly, SameSite=Lax, Path=/, Max-Age = token life, `Secure` whenever the request is https via `trust proxy`, or `COOKIE_SECURE=1`) and `kab_csrf` (same flags minus httpOnly). `resolveAuthUser` reads the Bearer header first, then the cookie, from the same token table, so nothing else changed. Logout clears both cookies. `/api/auth/session` clears a cookie that matches no sign-in and re-issues a lost CSRF cookie.
+- **CSRF** (`csrfGuard` on `/api`): any non-GET request that has no Bearer header but has a session cookie must (1) have an `Origin` equal to `Host` if an Origin is sent and (2) send `X-CSRF-Token` equal to the `kab_csrf` cookie (timing-safe compare), else 403 `{code:'CSRF'}`. Login, register and claim-admin skip the token check (no token exists yet) but keep the origin check. Bearer clients are unchanged (browsers never add that header themselves).
+- **Websocket**: accepts the session cookie on the handshake, only when `Origin` matches the host (stops cross-site websocket hijacking). The old `?token=` query still works until Task 8 removes it. The client no longer puts a token in the URL.
+- **URL routing** (`src/lib/routes.ts`, `KabmeetContext.tsx`): `/`, `/communities`, `/communities/:slug`, `/watch`, `/watch/:id`, `/room/:id`, `/classes`, `/host`, `/profile`, `/admin`, `/auth`. The address bar is read at start-up, Back/Forward work (`popstate`), unknown addresses become `/`. `navigate()` now pushes history and has `replace`. Session ids are validated (`[A-Za-z0-9_-]{1,80}`).
+- **Return-to link**: a signed-out visitor who opens `/room/:id`, `/classes`, `/host`, `/profile` or `/admin` is sent to `/auth` (replacing history, so Back does not bounce) and, after sign-in, to the exact link. Only our own known paths are accepted as a return target (`safeReturnPath` refuses `//host`, `https://...`, `/auth`, junk). `/watch` stays public as before.
+- **Tests** (+20, `npm test` is now 38): `tests/session.test.ts` (cookie flags, Secure behind `X-Forwarded-Proto: https` and not on plain http, refresh restores the session, bad cookie cleared, CSRF missing/wrong/right header, cross-site Origin refused, login with stale cookie, Bearer unaffected, sign-out clears both cookies and invalidates the old one, sign-out without CSRF refused, websocket accepts the cookie from our own origin, ignores it from another origin, visitors cannot post) and `tests/routes.test.ts` (parse/build round trip, malformed ids, safe return paths).
+- Docs: `docs/DEPLOYMENT.md` section 3 (proxy headers, `Secure`), `.env.example` `COOKIE_SECURE`.
+Half-done (and exactly where I stopped):
+- `document.title` is not changed per screen; `/watch` without an id keeps using the last active session id.
+- Auth screen opens on the "Setup Admin" tab on a fresh server (unchanged behaviour); I had to claim the admin first when testing.
+Could not run / not verified:
+- Ran: `npx tsc --noEmit`, `npx vite build`, `npm test` 38/38. Browser (headless Chromium, built app, 1280 and 360 px): signed-out `/room/sess-ml-python` goes to `/auth`; sign-in returns to `/room/sess-ml-python`; refresh keeps the user and the page; `kab_session` is httpOnly + Lax and invisible to `document.cookie`; `localStorage` empty; Classes then Back then Forward move through `/classes`, `/room/...`, `/classes`; PATCH without the CSRF header is 403 and with it 200; `/nonsense` becomes `/`; sign-out clears the cookie and `/profile` then redirects to `/auth`; no page errors.
+- NOT run: a real https reverse proxy (the `Secure` flag is tested only through the `X-Forwarded-Proto` header), Firefox/Safari, two devices, cookie behaviour when the site is embedded, a hard 7-day expiry.
+Problems or things that look wrong elsewhere:
+- In the 360 px room, the reaction bar floats over the video grid and the controls row, so the first tile and the Mic/Cam buttons are partly covered until the bar is collapsed (seen in my screenshot; it also says "0 in room" while connected). Not caused by Task 7. Suggest adding to Task 10 or 1b.
+- Sign-out and sign-in always end on Discover; the old `navigate('auth')` calls in pages (Watch, Communities) do not set a return link. A follow-up could set it when a signed-out person clicks a gated action.
+- The register limiter (10 per hour per address) makes test suites that register many users fail with 429; my tests share one student. Worth a `KABMEET_TEST=1` relaxation if later tasks need many users.
+- `ws.ts` has no CSRF-like check for the old `?token=` path; it disappears with Task 8.
+Suggestions:
+- Task 8 can now delete the `?token=` query and use the cookie, or a first message, with no client change besides `useSessionRealtime`.
+- Task 1b item 2/3 (ws close and approval restore) touch `server/ws.ts` near my edit to the connection handler (first ~15 lines of `wss.on('connection')`); expect a small merge conflict.
+- Add one line to each task: "Does this change who can reach the route? Add a test in `tests/session.test.ts`."
+Verify with: `npm test` (38 pass), `npx tsc --noEmit && npx vite build`; browser: sign out, open `/room/sess-ml-python`, sign in, refresh, Back.
 Ready for review: yes
 
 ### Report: Task 1, 2026-11-24, Claude Sonnet 5.5 (Executor) | Master verdict: VERIFIED (2026-11-25)

@@ -26,7 +26,7 @@ function formatDuration(seconds: number): string {
 }
 
 export function ClassesPage() {
-  const { apiFetch, accessToken, navigate, user, role, pushToast, isSlowNetwork } = useKabmeet();
+  const { apiFetch, signedIn, navigate, user, role, pushToast, isSlowNetwork } = useKabmeet();
   const [classes, setClasses] = useState<VirtualClassItem[]>([]);
   const [communities, setCommunities] = useState<Community[]>([]);
   const [loading, setLoading] = useState(true);
@@ -123,17 +123,13 @@ export function ClassesPage() {
   };
 
   const handleExportCsv = async (cls: VirtualClassItem) => {
-    if (!accessToken) {
+    if (!signedIn) {
       pushToast('Please sign in first to export CSV attendance.', 'error');
       return;
     }
     setExportingId(cls.id);
     try {
-      const response = await fetch(`/api/classes/${cls.id}/attendance.csv`, {
-        headers: {
-          Authorization: `Bearer ${accessToken}`,
-        },
-      });
+      const response = await fetch(`/api/classes/${cls.id}/attendance.csv`, { credentials: 'same-origin' });
       if (!response.ok) {
         let message = 'Unable to export attendance CSV.';
         try {

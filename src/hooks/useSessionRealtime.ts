@@ -21,7 +21,8 @@ export interface FloatingHeart {
 /** `monitor: true` is for the Host Panel: it joins to moderate, so it never counts as a viewer or earns engagement. */
 export function useSessionRealtime(sessionId: string, options: { monitor?: boolean } = {}) {
   const monitor = Boolean(options.monitor);
-  const { accessToken, pushToast } = useKabmeet();
+  // Sign-in travels as the httpOnly cookie on the websocket handshake; `signedIn` only tells us to reconnect when it changes.
+  const { signedIn, pushToast } = useKabmeet();
   const wsRef = useRef<WebSocket | null>(null);
   const [connected, setConnected] = useState(false);
   const [accessDenied, setAccessDenied] = useState<string | null>(null);
@@ -38,7 +39,6 @@ export function useSessionRealtime(sessionId: string, options: { monitor?: boole
       if (cancelled) return;
       const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
       const params = new URLSearchParams({ sessionId });
-      if (accessToken) params.set('token', accessToken);
       if (monitor) params.set('monitor', '1');
       const url = `${protocol}//${window.location.host}/ws?${params.toString()}`;
       const ws = new WebSocket(url);
@@ -241,7 +241,7 @@ export function useSessionRealtime(sessionId: string, options: { monitor?: boole
       wsRef.current?.close();
       wsRef.current = null;
     };
-  }, [sessionId, accessToken, pushToast, monitor]);
+  }, [sessionId, signedIn, pushToast, monitor]);
 
   const emit = useCallback((event: string, payload: Record<string, unknown> = {}) => {
     const ws = wsRef.current;

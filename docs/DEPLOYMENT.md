@@ -30,3 +30,10 @@ University networks often block UDP and unusual ports. Without TURN, students on
 - Hosts, moderators, lecturers, admins and SPEAKER accounts may publish. A member may publish only after the host approves their raised hand; the host can mute them or send them back to the audience at any time, and the media server is told straight away.
 - People waiting in the waiting room, and people outside a private class, get no token.
 - Capacity: plan roughly 50 viewers and up to 12 publishers per room on a 4-core server; measure before relying on it.
+
+## 3. Sign-in cookies and the reverse proxy
+The browser app stays signed in with two cookies: `kab_session` (httpOnly, `SameSite=Lax`, holds the sign-in token) and `kab_csrf` (readable by the page, checked on every write). Behind Nginx or Caddy:
+- Send `X-Forwarded-Proto: https` and `Host`, and pass `Origin` through unchanged. Kabmeet trusts one proxy hop (`trust proxy 1`), and uses the proto header to add the `Secure` flag.
+- Without that header the cookies are sent without `Secure` (fine for local http, wrong for production). `COOKIE_SECURE=1` forces the flag.
+- Cookie sign-in is accepted on the websocket only when the `Origin` header matches the site, so another website cannot open a socket as a signed-in person.
+- Requests that use an `Authorization: Bearer` header (scripts, tests) are unaffected.

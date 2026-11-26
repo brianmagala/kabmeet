@@ -18,7 +18,7 @@ const KIND_LABEL: Record<CertificateKind, string> = {
 };
 
 export function CertificateCard({ event }: { event: EventView }) {
-  const { apiFetch, accessToken, user, navigate, pushToast } = useKabmeet();
+  const { apiFetch, user, navigate, pushToast } = useKabmeet();
   const [status, setStatus] = useState<Status | null>(null);
   const [busy, setBusy] = useState(false);
   const ended = new Date(event.endsAt).getTime() <= Date.now();
@@ -37,10 +37,8 @@ export function CertificateCard({ event }: { event: EventView }) {
   const download = useCallback(async () => {
     setBusy(true);
     try {
-      // The PDF is binary, so it is fetched directly with the same bearer token apiFetch uses.
-      const res = await fetch(`/api/events/${event.id}/certificate`, {
-        headers: accessToken ? { Authorization: `Bearer ${accessToken}` } : {},
-      });
+      // The PDF is binary, so it is fetched directly. The sign-in cookie goes along by itself (a GET needs no CSRF header).
+      const res = await fetch(`/api/events/${event.id}/certificate`, { credentials: 'same-origin' });
       if (!res.ok) {
         let message = 'Could not make the certificate. Please try again.';
         try {
@@ -66,7 +64,7 @@ export function CertificateCard({ event }: { event: EventView }) {
     } finally {
       setBusy(false);
     }
-  }, [accessToken, apiFetch, event.id, event.slug, pushToast]);
+  }, [apiFetch, event.id, event.slug, pushToast]);
 
   if (event.status !== 'PUBLISHED') return null;
 
