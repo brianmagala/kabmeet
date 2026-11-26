@@ -154,7 +154,6 @@ export interface VerifyResult {
   /** Date of the event (its end date), ISO. */
   eventDate: string;
   kind: CertificateKind;
-  teamName: string | null;
 }
 
 export const ATTENDANCE_THRESHOLD = 0.5;

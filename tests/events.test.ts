@@ -436,3 +436,132 @@ describe('ranking rules', () => {
     assert.deepEqual(ranking.map((r) => [r.teamName, r.rank]), [['Alpha', 1], ['Beta', 1], ['Gamma', 3]]);
   });
 });
+
+// ---------------------------------------------------------------------------------------------
+// Step 3: certificates
+
+describe('certificates', () => {
+  const SESSIONS = ['sess-ml-python', 'sess-git-workshop', 'sess-indabax-vision', 'sess-kabai-pytorch'];
+  let day: any;
+  let hackEvent: any;
+  const T: Record<string, { token: string; id: string }> = {};
+
+  before(async () => {
+    // People from the hackathon tests are signed in again with a fresh login (no new registrations).
+    for (const [key, email] of [['e', 'e.team@kab.ac.ug'], ['judge', 'judge.team@kab.ac.ug'], ['d', 'd.team@kab.ac.ug'], ['f', 'f.team@kab.ac.ug'], ['b', 'b.team@kab.ac.ug']] as const) {
+      const r = await call('POST', '/api/auth/login', { email, password: 'longpassword1' });
+      assert.equal(r.status, 200, JSON.stringify(r.json));
+      T[key] = { token: r.json.accessToken, id: r.json.user.id };
+    }
+    // An event that is already over, with four public sessions: attending two of them is exactly half.
+    const created = await call(
+      'POST',
+      '/api/events',
+      eventBody({ title: 'IndabaX Certificates Day', startsAt: iso(-2 * DAY), endsAt: iso(-1 * DAY), sessionIds: SESSIONS }),
+      host.token,
+    );
+    assert.equal(created.status, 201, JSON.stringify(created.json));
+    day = created.json.event;
+    // Attendance is real: stay connected to the session long enough.
+    await Promise.all([
+      attend(SESSIONS[0], T.e.token),
+      attend(SESSIONS[1], T.e.token),
+      attend(SESSIONS[0], T.judge.token),
+    ]);
+  });
+
+  const status = (eventId: string, token?: string) => call('GET', `/api/events/${eventId}/certificate/status`, undefined, token);
+  const download = (eventId: string, token?: string) => call('GET', `/api/events/${eventId}/certificate`, undefined, token);
+
+  test('a visitor gets 401; an unpublished event looks missing', async () => {
+    assert.equal((await download(day.id)).status, 401);
+    const draftEvt = await call('POST', '/api/events', eventBody({ title: 'Draft certs', status: 'DRAFT', startsAt: iso(-2 * DAY), endsAt: iso(-1 * DAY) }), host.token);
+    assert.equal((await download(draftEvt.json.event.id, member.token)).status, 404);
+  });
+
+  test('nothing is issued before the event ends', async () => {
+    const live = await call('POST', '/api/events', eventBody({ title: 'Still running', startsAt: iso(-3600_000), endsAt: iso(3600_000) }), host.token);
+    const r = await download(live.json.event.id, member.token);
+    assert.equal(r.status, 409);
+    assert.equal(r.json.code, 'NOT_ENDED');
+  });
+
+  test('attending at least half of the public sessions earns a certificate; less does not', async () => {
+    const ok = await status(day.id, T.e.token);
+    assert.equal(ok.json.available, true);
+    assert.equal(ok.json.kind, 'ATTENDANCE');
+    assert.equal(ok.json.attended, 2);
+    assert.equal(ok.json.total, 4);
+    assert.equal(ok.json.needed, 2);
+
+    const short = await download(day.id, T.judge.token); // 1 of 4
+    assert.equal(short.status, 403);
+    assert.match(short.json.message, /1 of 4/);
+    assert.equal((await download(day.id, T.f.token)).status, 403); // 0 of 4
+  });
+
+  let code = '';
+  test('the PDF downloads, carries the code, and asking again returns the same certificate', async () => {
+    const r = await download(day.id, T.e.token);
+    assert.equal(r.status, 200);
+    assert.match(r.type, /application\/pdf/);
+    assert.equal(r.raw.subarray(0, 5).toString('latin1'), '%PDF-');
+    const { PDFDocument } = await import('pdf-lib');
+    const pdf = await PDFDocument.load(r.raw);
+    assert.equal(pdf.getPageCount(), 1);
+    assert.match(pdf.getTitle() ?? '', /Edwin Student/);
+    const st = await status(day.id, T.e.token);
+    code = st.json.code;
+    assert.match(code, /^KAB-\d{4}-[A-HJ-NP-Z2-9]{4}$/);
+    await download(day.id, T.e.token);
+    assert.equal((await status(day.id, T.e.token)).json.code, code, 'same person, same code');
+  });
+
+  test('anyone can verify a code; only name, event, date and kind come back', async () => {
+    const r = await call('GET', `/api/verify/${code.toLowerCase()}`);
+    assert.equal(r.status, 200);
+    assert.deepEqual(Object.keys(r.json).sort(), ['code', 'eventDate', 'eventTitle', 'kind', 'name', 'valid']);
+    assert.equal(r.json.valid, true);
+    assert.equal(r.json.name, 'Edwin Student');
+    assert.equal(r.json.eventTitle, 'IndabaX Certificates Day');
+    assert.equal(r.json.kind, 'ATTENDANCE');
+    assert.ok(!JSON.stringify(r.json).includes('@'), 'no email');
+  });
+
+  test('unknown or malformed codes are 404', async () => {
+    for (const bad of ['KAB-2026-ZZZZ', 'nope', 'KAB-26-AB', '../etc/passwd']) {
+      assert.equal((await call('GET', `/api/verify/${encodeURIComponent(bad)}`)).status, 404, bad);
+    }
+  });
+
+  test('winners and runners-up get an achievement certificate; attendance and no-shows are handled separately', async () => {
+    // The Hack Day from the judging tests is over now: move its dates into the past.
+    const list = await call('GET', '/api/events', undefined, host.token);
+    hackEvent = list.json.events.find((e: any) => e.title === 'Kabale Hack Day');
+    const moved = await call('PATCH', `/api/events/${hackEvent.id}`, { startsAt: iso(-3 * 3600_000), endsAt: iso(-3600_000) }, host.token);
+    assert.equal(moved.status, 200, JSON.stringify(moved.json));
+
+    const winner = await status(hackEvent.id, member.token); // Kabale Coders Pro won
+    assert.equal(winner.json.kind, 'WINNER');
+    const runner = await status(hackEvent.id, T.d.token); // Night Owls came second
+    assert.equal(runner.json.kind, 'RUNNER_UP');
+    const pdf = await download(hackEvent.id, member.token);
+    assert.equal(pdf.status, 200);
+    const v = await call('GET', `/api/verify/${(await status(hackEvent.id, member.token)).json.code}`);
+    assert.equal(v.json.kind, 'WINNER');
+    assert.equal(v.json.eventTitle, 'Kabale Hack Day');
+    // Someone with no team who attended its one public session gets the attendance certificate (Jude did)...
+    assert.equal((await status(hackEvent.id, T.judge.token)).json.kind, 'ATTENDANCE');
+    // ...and someone with no team who did not attend gets nothing.
+    assert.equal((await download(hackEvent.id, admin.token)).status, 403);
+  });
+
+  test('codes are unique across certificates', async () => {
+    const codes = new Set<string>();
+    for (const [eid, token] of [[day.id, T.e.token], [hackEvent.id, member.token], [hackEvent.id, T.d.token]] as const) {
+      await download(eid, token);
+      codes.add((await status(eid, token)).json.code);
+    }
+    assert.equal(codes.size, 3);
+  });
+});

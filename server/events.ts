@@ -11,11 +11,15 @@ import {
   type EventRecord,
   type EventSessionSummary,
   type EventView,
+  ATTENDANCE_THRESHOLD,
+  type CertificateKind,
   type JudgeCriterion,
   type RankedTeam,
   type ResultsView,
   type TeamView,
+  type VerifyResult,
 } from '../src/shared/events';
+import { buildCertificatePdf } from './certificate-pdf';
 import { store, type StoredUser } from './store';
 
 // ---------------------------------------------------------------------------------------------
@@ -341,6 +345,7 @@ export function registerEventRoutes(deps: EventDeps): void {
   });
 
   registerHackathonRoutes(deps);
+  registerCertificateRoutes(deps);
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -775,5 +780,166 @@ function registerHackathonRoutes(deps: EventDeps): void {
     ev.resultsRevealedAt = new Date().toISOString();
     store.save();
     res.json({ results: resultsFor(ev) });
+  });
+}
+
+// ---------------------------------------------------------------------------------------------
+// Step 3: certificates
+
+const KIND_ORDER: CertificateKind[] = ['WINNER', 'RUNNER_UP', 'ATTENDANCE'];
+
+interface CertificateCheck {
+  available: boolean;
+  /** Why not, when not available. */
+  reason?: 'NOT_ENDED' | 'NOT_ELIGIBLE';
+  message: string;
+  kind?: CertificateKind;
+  teamName?: string | null;
+  attended: number;
+  total: number;
+  needed: number;
+}
+
+/** Who gets a certificate: winners and runners-up of a revealed hackathon, and anyone who attended at least half of the event's public sessions. */
+export function checkCertificate(ev: EventRecord, userId: string, now: number = Date.now()): CertificateCheck {
+  const sessions = publicSessionsOf(ev);
+  const total = sessions.length;
+  const needed = Math.ceil(total * ATTENDANCE_THRESHOLD);
+  const attendedIds = new Set(store.state.engagement?.[userId]?.attendedSessionIds ?? []);
+  const attended = sessions.filter((s) => attendedIds.has(s.id)).length;
+  const base = { attended, total, needed };
+
+  if (now < new Date(ev.endsAt).getTime()) {
+    return { ...base, available: false, reason: 'NOT_ENDED', message: 'Certificates open when the event ends.' };
+  }
+
+  if (ev.hackathon && ev.resultsRevealedAt) {
+    const team = teamOf(ev.id, userId);
+    const results = resultsFor(ev);
+    const placed = team && results?.ranking.find((r) => r.teamId === team.id);
+    if (team && placed && placed.rank === 1) return { ...base, available: true, kind: 'WINNER', teamName: team.name, message: 'Your team won.' };
+    if (team && placed && placed.rank === 2) return { ...base, available: true, kind: 'RUNNER_UP', teamName: team.name, message: 'Your team was runner-up.' };
+  }
+
+  if (total > 0 && attended >= needed) {
+    return { ...base, available: true, kind: 'ATTENDANCE', teamName: null, message: `You attended ${attended} of ${total} sessions.` };
+  }
+  return {
+    ...base,
+    available: false,
+    reason: 'NOT_ELIGIBLE',
+    message:
+      total === 0
+        ? 'This event has no public sessions to attend, so there is no attendance certificate.'
+        : `You attended ${attended} of ${total} sessions. A certificate needs at least ${needed}.`,
+  };
+}
+
+function issueCertificate(ev: EventRecord, user: StoredUser, kind: CertificateKind, teamName: string | null): StoredCertificate {
+  const data = eventsData();
+  const existing = data.certificates.find((c) => c.eventId === ev.id && c.userId === user.id && c.kind === kind);
+  if (existing) return existing;
+  const year = new Date(ev.endsAt).getUTCFullYear();
+  const taken = new Set(data.certificates.map((c) => c.code));
+  let code = '';
+  for (let attempt = 0; attempt < 100 && (!code || taken.has(code)); attempt += 1) {
+    let tail = '';
+    for (let i = 0; i < 4; i += 1) tail += JOIN_CODE_ALPHABET[randomInt(JOIN_CODE_ALPHABET.length)];
+    code = `KAB-${year}-${tail}`;
+  }
+  if (taken.has(code)) throw new Error('Could not make a free certificate code.');
+  const cert: StoredCertificate = {
+    code,
+    eventId: ev.id,
+    userId: user.id,
+    kind,
+    name: user.fullName,
+    teamName,
+    issuedAt: new Date().toISOString(),
+  };
+  data.certificates.push(cert);
+  store.save();
+  return cert;
+}
+
+const longDate = (iso: string) =>
+  new Intl.DateTimeFormat('en-GB', { timeZone: 'Africa/Kampala', day: 'numeric', month: 'long', year: 'numeric' }).format(new Date(iso));
+
+function registerCertificateRoutes(deps: EventDeps): void {
+  const { app, requireAuth, rateLimit } = deps;
+
+  // Somebody could guess codes one by one, so slow that down. A code only reveals a name, an event and a date.
+  app.use('/api/verify', rateLimit('verify-certificate', 40, 60 * 1000));
+
+  function publishedEnded(req: AuthedEventRequest, res: Response): EventRecord | null {
+    const ev = findEvent(String(req.params.id));
+    if (!ev || ev.status !== 'PUBLISHED') {
+      res.status(404).json({ message: 'Event not found.' });
+      return null;
+    }
+    return ev;
+  }
+
+  // What the page shows next to the Download button.
+  app.get('/api/events/:id/certificate/status', requireAuth, (req: AuthedEventRequest, res) => {
+    const ev = publishedEnded(req, res);
+    if (!ev) return;
+    const check = checkCertificate(ev, req.authUser!.id);
+    const issued = check.kind ? eventsData().certificates.find((c) => c.eventId === ev.id && c.userId === req.authUser!.id && c.kind === check.kind) : undefined;
+    res.json({ ...check, code: issued?.code ?? null });
+  });
+
+  // The PDF. The first successful request issues the certificate and its code; later requests give the same one.
+  app.get('/api/events/:id/certificate', requireAuth, async (req: AuthedEventRequest, res) => {
+    const ev = publishedEnded(req, res);
+    if (!ev) return;
+    const user = req.authUser!;
+    const check = checkCertificate(ev, user.id);
+    if (!check.available || !check.kind) {
+      res.status(check.reason === 'NOT_ENDED' ? 409 : 403).json({ code: check.reason, message: check.message });
+      return;
+    }
+    const cert = issueCertificate(ev, user, check.kind, check.teamName ?? null);
+    const origin = (process.env.APP_URL?.trim() || `${req.protocol}://${req.get('host')}`).replace(/\/+$/, '');
+    try {
+      const pdf = await buildCertificatePdf({
+        name: cert.name,
+        eventTitle: ev.title,
+        eventDate: longDate(ev.endsAt),
+        venue: ev.venue,
+        kind: cert.kind,
+        teamName: cert.teamName,
+        code: cert.code,
+        verifyUrl: `${origin}/verify/${cert.code}`,
+        issuedOn: longDate(cert.issuedAt),
+      });
+      res.setHeader('Content-Type', 'application/pdf');
+      res.setHeader('Content-Disposition', `attachment; filename="certificate-${cert.code}.pdf"`);
+      res.setHeader('Cache-Control', 'private, no-store');
+      res.send(Buffer.from(pdf));
+    } catch (err) {
+      console.error('[kabmeet] Certificate PDF failed:', err);
+      res.status(500).json({ message: 'Could not make the certificate. Please try again.' });
+    }
+  });
+
+  // Public: anyone with a code can check it. Only name, event, date and kind come back.
+  app.get('/api/verify/:code', (req, res) => {
+    const code = String(req.params.code).trim().toUpperCase();
+    const cert = /^KAB-\d{4}-[A-Z0-9]{4}$/.test(code) ? eventsData().certificates.find((c) => c.code === code) : undefined;
+    const ev = cert ? eventsData().events.find((e) => e.id === cert.eventId) : undefined;
+    if (!cert || !ev) {
+      res.status(404).json({ valid: false, message: 'No certificate matches that code.' });
+      return;
+    }
+    const result: VerifyResult = {
+      valid: true,
+      code: cert.code,
+      name: cert.name,
+      eventTitle: ev.title,
+      eventDate: ev.endsAt,
+      kind: cert.kind,
+    };
+    res.json(result);
   });
 }
