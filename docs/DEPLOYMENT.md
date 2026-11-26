@@ -37,3 +37,25 @@ The browser app stays signed in with two cookies: `kab_session` (httpOnly, `Same
 - Without that header the cookies are sent without `Secure` (fine for local http, wrong for production). `COOKIE_SECURE=1` forces the flag.
 - Cookie sign-in is accepted on the websocket only when the `Origin` header matches the site, so another website cannot open a socket as a signed-in person.
 - Requests that use an `Authorization: Bearer` header (scripts, tests) are unaffected.
+
+## 4. Embedding Kabmeet in ai.kab.ac.ug/indabax
+
+Kabmeet is meant to be shown inside the club site. Three things must be right, or sign-in, camera, microphone or screen share will silently fail.
+
+1. **Allow the framing site.** Kabmeet only lets itself be framed by the origins in `EMBED_ORIGINS` (default `https://ai.kab.ac.ug`). It sends `Content-Security-Policy: frame-ancestors 'self' <origins>`. Add more sites separated by spaces, origin only (no path).
+2. **Delegate the devices in the iframe tag** on the club page. Without `allow`, the browser blocks camera, microphone and screen share inside an iframe, and Kabmeet cannot do anything about it:
+
+   ```html
+   <iframe
+     src="https://meet.kab.ac.ug/"
+     title="Kabmeet live sessions"
+     allow="camera; microphone; display-capture; fullscreen; autoplay; clipboard-write"
+     style="width:100%; height:90vh; border:0"
+     loading="lazy"></iframe>
+   ```
+
+   To open a specific page, put it in `src`, for example `https://meet.kab.ac.ug/watch/sess-ml-python` or `/events/indabax-kabale-day`. Kabmeet's address changes happen inside the iframe, so refreshing the club page returns to the `src` page.
+3. **Keep both sites on one registrable domain.** Put Kabmeet on a `kab.ac.ug` address (for example `meet.kab.ac.ug`, or `ai.kab.ac.ug/kabmeet` through the reverse proxy). Then the browser treats the iframe as the same site and the sign-in cookie works. If Kabmeet must live on another domain, set `COOKIE_SAMESITE=none` (needs https). Some browsers still block third-party cookies by default, so expect sign-in problems there; the same-domain setup is the reliable one.
+
+The page serving Kabmeet must be https. Browsers refuse camera and screen capture on plain http, inside or outside an iframe.
+

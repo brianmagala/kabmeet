@@ -48,7 +48,10 @@ function isHttps(req: Request): boolean {
 }
 
 function serialize(name: string, value: string, req: Request, opts: { httpOnly: boolean; maxAgeSeconds: number }): string {
-  const parts = [`${name}=${encodeURIComponent(value)}`, 'Path=/', `Max-Age=${opts.maxAgeSeconds}`, 'SameSite=Lax'];
+  // COOKIE_SAMESITE=none is for a Kabmeet address on a different registrable domain than the site that frames it.
+  // Browsers only accept SameSite=None together with Secure, so it is used only when the request is https.
+  const wantsNone = process.env.COOKIE_SAMESITE?.toLowerCase() === 'none' && isHttps(req);
+  const parts = [`${name}=${encodeURIComponent(value)}`, 'Path=/', `Max-Age=${opts.maxAgeSeconds}`, wantsNone ? 'SameSite=None' : 'SameSite=Lax'];
   if (opts.httpOnly) parts.push('HttpOnly');
   if (isHttps(req)) parts.push('Secure');
   return parts.join('; ');

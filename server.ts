@@ -191,9 +191,32 @@ function getAdminSetupCode(): string {
   return adminSetupCode;
 }
 
+/**
+ * Sites allowed to show Kabmeet inside an iframe (EMBED_ORIGINS, space or comma separated).
+ * Default is the club site. Each entry must be an origin such as https://ai.kab.ac.ug (no path).
+ */
+function parseEmbedOrigins(raw: string | undefined): string[] {
+  const list = (raw ?? 'https://ai.kab.ac.ug').split(/[\s,]+/).filter(Boolean);
+  const origins: string[] = [];
+  for (const item of list) {
+    try {
+      const u = new URL(item);
+      if ((u.protocol === 'https:' || u.protocol === 'http:') && u.origin === item.replace(/\/$/, '')) origins.push(u.origin);
+      else console.warn(`[kabmeet] EMBED_ORIGINS: "${item}" is not a plain origin (like https://ai.kab.ac.ug). Ignored.`);
+    } catch {
+      console.warn(`[kabmeet] EMBED_ORIGINS: "${item}" is not a valid address. Ignored.`);
+    }
+  }
+  return origins;
+}
+
+const embedOrigins = parseEmbedOrigins(process.env.EMBED_ORIGINS);
+// X-Frame-Options cannot name another site, so framing is controlled with CSP frame-ancestors only.
+const frameAncestors = `frame-ancestors 'self' ${embedOrigins.join(' ')}`.trim();
+
 function securityHeaders(_req: Request, res: Response, next: NextFunction) {
   res.setHeader('X-Content-Type-Options', 'nosniff');
-  res.setHeader('X-Frame-Options', 'SAMEORIGIN');
+  res.setHeader('Content-Security-Policy', frameAncestors);
   res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
   res.setHeader('Permissions-Policy', 'camera=(self), microphone=(self), display-capture=(self)');
   next();
