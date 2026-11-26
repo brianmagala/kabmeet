@@ -5,6 +5,7 @@ import { AuthPage } from './pages/AuthPage';
 import { ClassesPage } from './pages/ClassesPage';
 import { CommunitiesPage } from './pages/CommunitiesPage';
 import { DiscoverPage } from './pages/DiscoverPage';
+import { LeaderboardPage } from './pages/LeaderboardPage';
 import { HostPanelPage } from './pages/HostPanelPage';
 import { ProfilePage } from './pages/ProfilePage';
 import { RoomPage } from './pages/RoomPage';
@@ -26,6 +27,8 @@ function KabmeetRouter() {
       return <ClassesPage />;
     case 'host-panel':
       return <HostPanelPage />;
+    case 'leaderboard':
+      return <LeaderboardPage />;
     case 'profile':
       return <ProfilePage />;
     case 'admin':

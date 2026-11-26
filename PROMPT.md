@@ -5,7 +5,7 @@ The communication link between the **Master** (Claude: planner, reviewer, approv
 ## 0. Executor quick start (read this first)
 
 1. Read this whole file. Then read section 5 (status) and section 6 (known issues), because they save you from rediscovering things.
-2. Take the **first task in the priority order of section 7 that is `OPEN`**. One task per round.
+2. **This round's assignment from the Master: Task 16 (status `ASSIGNED`).** Do that one, even though it is not first in the priority order. In later rounds, take the first task in the priority order of section 7 that is `OPEN`. One task per round.
 3. Work on a branch named `task-<number>-<short-name>`. **Never push to `main`.** The Master merges.
 4. Install with `bun install`. Check with `npx tsc --noEmit && npx vite build && npm test`.
 5. Write your report in section 10 using the template there. Change only the status word of your own task.
@@ -121,9 +121,9 @@ Status words: `OPEN` > `IN PROGRESS` > `READY FOR REVIEW` > `VERIFIED` (or `REWO
 | 11 | Recordings and replays (LiveKit Egress) | `OPEN` |
 | 12 | Live captions and accessibility | `OPEN` |
 | 13 | Notifications: "going live" push and reminders | `OPEN` |
-| 14 | Engagement: badges, streaks, leaderboard, session analytics | `OPEN` |
+| 14 | Engagement: badges, streaks, leaderboard, session analytics | `VERIFIED` (built and tested by the Master) |
 | 15 | Offline-first: queue chat sends, cached lists | `OPEN` |
-| 16 | Hackathon and IndabaX mode: schedule, teams, judges, certificates | `OPEN` |
+| 16 | Hackathon and IndabaX mode: schedule, teams, judges, certificates | `ASSIGNED` (next executor, branch `task-16-events`) |
 
 ---
 
@@ -206,12 +206,31 @@ Done by the Master on 2026-11-25 from the Kabmeet Loading Kit artifact. Six mome
 3. In-app bell with the same events (works when push is blocked).
 **Verify with:** two browsers; follow, go live, notification arrives; unsubscribed user gets nothing.
 
-### Task 14: Engagement: badges, streaks, leaderboard, analytics (`OPEN`)
-**Goal:** friendly motivation for the club, plus numbers for hosts.
-1. Badges as content (campus emoji from Task 9): First Session, Question Asker, Poll Master, Regular (streak of weeks), Host.
-2. Club leaderboard, opt-in, weekly reset, never shows exact minutes of private classes.
-3. Host dashboard per session: peak viewers, average watch time, questions, poll participation.
-**Not in scope:** rewards with money value.
+### Task 14: Engagement: badges, streaks, leaderboard, analytics (`VERIFIED`)
+Built by the Master on 2026-11-26. Typecheck, build and 33 of 33 tests pass; checked in a browser (badge toast, Profile, Leaderboard, Host Panel).
+
+**What exists**
+- **Rules (shared by server and browser):** `src/shared/engagement.ts`: badge list, points table, Kabale-time ISO weeks (UTC+3), `computeStreak`, API shapes. Change a badge or a point value there only.
+- **Server:** `server/engagement.ts` keeps the numbers (`store.state.engagement`, `store.state.sessionStats`, both optional so old data files load). Hooks in `server/ws.ts`: connect/close (presence), `auth:refresh`, chat, Q&A question, poll vote, reaction.
+- **API (all need sign-in):** `GET /api/engagement/me`, `PATCH /api/engagement/me` `{leaderboardOptIn}`, `GET /api/leaderboard?period=week|all`, `GET /api/sessions/:id/stats` (session host, LECTURER or ADMIN only).
+- **UI:** `EngagementPanel` on Profile (streak, 8 week dots, 8 badges with progress, opt-in switch), `LeaderboardPage` (route `leaderboard`, nav link for signed-in members), `SessionStatsCard` at the top of the Host Panel (9 numbers, viewers-over-time line, refreshes every 15 s while live). A badge or streak award shows as a toast through the existing realtime hook (`engagement:award`).
+
+**Rules decided (keep them)**
+1. Only signed-in people in PUBLIC sessions earn anything. **Private classes earn nothing** and never reach a leaderboard (test covers it).
+2. Attendance counts after 60 s in the room (`KABMEET_ATTEND_SECONDS` overrides it, tests use 1). A quick bounce earns nothing.
+3. Points: attend 10, chat 1 (max 10 per session), question 5 (max 3), poll vote 2 (max 5 polls), +5 when a new week extends a streak of 2 or more. Changing a poll vote never earns twice.
+4. Watch time counts a person once, even with two tabs. Visitors who are not signed in count only toward peak viewers.
+5. The Host Panel joins with `?monitor=1` (`useSessionRealtime(id, { monitor: true })`). A monitor connection is not a viewer and earns nothing. Any new moderation-only screen must do the same.
+6. Leaderboard is opt-in (off by default). It shows display name, points, streak and badge count only: never email, id, classes or chat. Weekly board resets every Monday (Kabale time); a streak survives all of the next week.
+7. Badge faces are emoji as content (allowed by section 3). No emoji as icons.
+
+**Known limits and follow-ups (Task 14b, small)**
+1. Open connections are lost if the server restarts mid-session (their watch seconds are not saved; people reconnect and count again).
+2. The `host` badge ("On the Mic") is awarded when the host next opens Profile, not at the moment they go live.
+3. Seeded demo sessions have no timeline, so their Host Panel line stays empty until people join.
+4. `peakViewers` in the older moderation state still counts monitor connections; the new Session numbers use the corrected live count. Align them when touching `server/ws.ts` next.
+5. On a 390 px wide phone the page can scroll sideways a little; the header on the right edge looks cut off. Not caused by Task 14 (the new cards fit) but not yet traced. Check the AppShell header.
+6. Streak and badge toasts for people on slow links are the only notice; a bell entry (Task 13) would help.
 
 ### Task 15: Offline-first (`OPEN`)
 **Goal:** the site stays usable when the network drops (follow-up 5 of Task 4b).
@@ -219,12 +238,42 @@ Done by the Master on 2026-11-25 from the Kabmeet Loading Kit artifact. Six mome
 2. Cache the last Discover and Communities lists in the service worker so they open instantly and refresh quietly (stale-while-revalidate).
 **Verify with:** DevTools Offline; send 3 messages; go online; they arrive once and in order (no duplicates).
 
-### Task 16: Hackathon and IndabaX mode (`OPEN`)
-**Goal:** run a whole event, not just a stream.
-1. Event page: schedule of sessions, speakers, countdown, "Add to calendar" file (.ics).
-2. Hackathon tools: teams (create, join by code), submission link and demo slot, judge scoring form, results reveal.
-3. Certificates of attendance as a downloadable PDF with name, event and date (uses the attendance numbers from Task 6, so do Task 6 first).
-**Verify with:** run a mock 2-session event with 3 teams and 2 judges.
+### Task 16: Hackathon and IndabaX mode (`ASSIGNED`: executor, branch `task-16-events`)
+**Goal:** run a whole event on Kabmeet, not just a stream. Think: the IndabaX day at Kabale University with 4 sessions, a hackathon with teams, judges and a certificate at the end. Make it the feature people show to visitors.
+
+**Branch protocol (as always):** work on `task-16-events`, never push to `main`, small commits, write your report in section 10 when done. The Master verifies and merges.
+
+**Read first:** section 3 (design rules, emoji and motion policy), section 4 (engineering rules), Task 14 above (rules you must reuse: attendance, private classes, `?monitor=1`), `server/store.ts` (how data is saved; new keys must be optional and read with `?? {}` so old data files still load), `server/auth.ts` (roles and allowed routes), `src/components/KabmeetMoments.tsx` (loaders to reuse), `tests/engagement.test.ts` (how to write a server test with real websockets).
+
+**Build, in this order (stop after any step if time runs out, each step must work alone):**
+
+1. **Events and the event page.**
+   - New data: `Event { id, slug, title, description, startsAt, endsAt, venue, coverUrl?, sessionIds[], speakers[{name, role, bio}], createdBy, status: 'DRAFT'|'PUBLISHED' }`. Only ADMIN and HOST can create or edit; everyone can read PUBLISHED.
+   - API: `GET /api/events`, `GET /api/events/:slug`, `POST /api/events`, `PATCH /api/events/:id`. Validate with zod like the other routes.
+   - UI: route `events` (list) and `event` (page): cover, countdown to start (hours, minutes; use `tabular-nums`; stop at zero and say "Live now"), schedule grouped by day with each session as a card that opens the Room or Watch page, speakers row, and **"Add to calendar"** that downloads an `.ics` file (build it in the browser, with correct UTC times and a reminder 15 minutes before).
+   - Add "Events" to the nav for everyone, and a small "Happening soon" card on Discover when an event is within 7 days.
+2. **Hackathon tools** (an event can switch on `hackathon: true`).
+   - Teams: any signed-in member creates a team (name, project idea, 1 to 5 members) and gets a 6-character join code; others join with the code. One team per person per event. The creator can remove a member or rename the team.
+   - Submission: team sets a repo or demo link (https only, validated) and a 2 sentence summary; a demo slot (host assigns a time) shows on the event page.
+   - Judging: ADMIN or HOST adds judges (existing users). A judge scores each team 1 to 5 on Idea, Build, Demo, Impact (4 criteria), with an optional comment. A judge cannot score their own team. Scores are private until the host presses **Reveal results**; then show ranking with the average per criterion.
+   - Keep judge scores and comments out of every API response except for judges and the host before the reveal (write a test for this).
+3. **Certificates.**
+   - After an event ends, a signed-in member who attended at least 50 percent of its public sessions (use `attendedSessionIds` from `server/engagement.ts`; Task 6 is not done yet, so do not wait for it) can download a **PDF certificate**: name, event title, date, a short unique code like `KAB-2026-7F3Q`, and the line "Verify at /verify/<code>".
+   - Winners get a "Winner" or "Runner-up" certificate with the team name.
+   - `GET /api/events/:id/certificate` returns the PDF (use `pdf-lib` or `pdfkit`; add it to dependencies with `bun add`). Server stores issued codes, and `GET /api/verify/:code` returns the name, event and date only (no email).
+   - Design: Kabmeet greens, the club name, plenty of white space, one decorative line. It must look human-made, not like a template.
+
+**Rules for this task**
+- No emoji as icons (use lucide icons). Emoji only as content (for example 🏆 on a winner card, 🎓 on a certificate title is fine).
+- Use `useLoadingStage`, `ShimmerGrid`/`kab-shimmer` placeholders and `PillPulseButton` for every wait and every save. Respect reduced motion.
+- Every new screen must work at 390 px wide with no sideways scroll, and in light and dark mode.
+- Private classes never appear in an event, a certificate or a leaderboard.
+- Do not mention or compare with any existing university e-learning platform anywhere.
+- New server code goes in `server/events.ts` (not in `server.ts`), types shared with the browser in `src/shared/events.ts`.
+
+**Tests (required, add `tests/events.test.ts` to the `npm test` script):** member cannot create an event (403); draft events are hidden from members; team join code works once per person; a person cannot join two teams in one event; judge cannot score own team; scores are hidden before reveal and visible after; certificate refused under 50 percent attendance and issued above it; `/api/verify/:code` shows no email. Run `npx tsc --noEmit && npx vite build && npm test` before you report.
+
+**Report (in section 10, under a heading "Task 16 report"):** what you built, what you could not finish, every decision you made that the Master should check, screenshots you took (describe them), anything in this brief that was wrong or unclear, and your suggestion for the next task.
 
 ### Task 5: Tests for the rules that matter (`VERIFIED`)
 `tests/api.test.ts` and `tests/video.test.ts` run with `npm test` (18 tests) and in CI. Every task adds tests for its own rules. Still missing: websocket role checks, class attendance rules (Task 6).
@@ -325,6 +374,7 @@ Broadcast mode for 150+ viewers (HLS for the audience), live captions (Whisper),
 - 2026-11-25: Emoji rule changed (section 3). Brian wants more campus personality, so emojis are welcome as content, not as icons. Added Tasks 9 (emoji pack, stickers, microcopy) and 10 (hover and motion).
 - 2026-11-25: **Task 4 done by the Master** (Kabmeet Loading Kit artifact). Six moment loaders plus staged waits, checked in a browser with throttled APIs; typecheck, build and 18 of 18 tests pass. Decision: Signal Prism stays the single page loader, `TopNetworkBar` is the top thread, and slow-network messaging is not duplicated (AppShell banner owns the Data saver offer). Follow-ups in Task 4b.
 - 2026-11-25: **New ideas added after research** (LiveKit Egress, higher-ed streaming feature lists, PWA offline and push practice, event engagement tools): Tasks 11 to 16. Order puts offline (15) before recordings (11) because campus networks drop first.
+- 2026-11-26: **Task 14 done by the Master** (badges, weekly streaks, opt-in leaderboard, host session stats). See the Task 14 section for the rules decided. Browser check caught one bug before shipping: the Host Panel's connection was counted as a viewer and earned a badge. Fixed with `?monitor=1`, covered by a test. **Next executor: Task 16** (brief is in its section). Master verifies when Brian says so.
 - Open decision for Brian: Task 3 (one codebase at the root, recommended).
 
 ---

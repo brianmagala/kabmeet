@@ -13,12 +13,19 @@ import {
   isStaffOrHost,
   verifyPassword,
 } from './server/auth';
+import {
+  getLeaderboard,
+  getSessionStatsFor,
+  getSummary,
+  setLeaderboardOptIn,
+} from './server/engagement';
 import { store, type StoredUser } from './server/store';
 import { getVideoProvider } from './server/video';
 import {
   attachWebSocketServer,
   broadcastToSession,
   canUserAccessSession,
+  getLiveViewerCount,
   getRoomSeat,
   isAutoAdmitted,
 } from './server/ws';
@@ -1034,6 +1041,46 @@ async function startServer() {
 
     store.save();
     res.json({ user: sanitizeUser(user) });
+  });
+
+  // --- Task 14: engagement (badges, streaks, leaderboard, host stats) ---
+  app.get('/api/engagement/me', requireAuth, (req: AuthedRequest, res) => {
+    const summary = getSummary(req.authUser!);
+    store.save(); // getSummary can quietly award a badge that depends on hosted sessions
+    res.json({ engagement: summary });
+  });
+
+  const engagementPrefsSchema = z.object({ leaderboardOptIn: z.boolean() });
+  app.patch('/api/engagement/me', requireAuth, (req: AuthedRequest, res) => {
+    const parsed = engagementPrefsSchema.safeParse(req.body);
+    if (!parsed.success) {
+      res.status(400).json({ message: 'Send leaderboardOptIn as true or false.' });
+      return;
+    }
+    setLeaderboardOptIn(req.authUser!.id, parsed.data.leaderboardOptIn);
+    store.save();
+    res.json({ engagement: getSummary(req.authUser!) });
+  });
+
+  app.get('/api/leaderboard', requireAuth, (req: AuthedRequest, res) => {
+    const period = req.query.period === 'all' ? 'all' : 'week';
+    res.json(getLeaderboard(period, req.authUser!.id));
+  });
+
+  app.get('/api/sessions/:id/stats', requireAuth, (req: AuthedRequest, res) => {
+    const id = String(req.params.id);
+    const session = store.state.sessions.find((s) => s.id === id);
+    if (!session) {
+      res.status(404).json({ message: 'Session not found.' });
+      return;
+    }
+    const user = req.authUser!;
+    const allowed = user.role === 'ADMIN' || user.role === 'LECTURER' || user.id === session.hostId;
+    if (!allowed) {
+      res.status(403).json({ message: 'Only the session host, a lecturer or an admin can see these numbers.' });
+      return;
+    }
+    res.json({ stats: getSessionStatsFor(id, getLiveViewerCount(id)) });
   });
 
   app.post('/api/reports', requireAuth, (req: AuthedRequest, res) => {

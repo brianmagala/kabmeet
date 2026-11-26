@@ -17,6 +17,7 @@ import {
 import { useKabmeet } from '../context/KabmeetContext';
 import { useSessionRealtime } from '../hooks/useSessionRealtime';
 import { KabmeetLoadingCard, KabmeetSignalPrism } from '../components/KabmeetLoader';
+import { SessionStatsCard } from '../components/SessionStatsCard';
 import type { KabSession } from '../types/kabmeet';
 
 export function HostPanelPage() {
@@ -60,7 +61,7 @@ export function HostPanelPage() {
     }
   }, [isStaff, loadSessions]);
 
-  const { connected, state, emit } = useSessionRealtime(selectedId);
+  const { connected, state, emit } = useSessionRealtime(selectedId, { monitor: true });
 
   useEffect(() => {
     if (state?.blockedWords) {
@@ -194,6 +195,8 @@ export function HostPanelPage() {
         </div>
       ) : (
         <>
+          <SessionStatsCard sessionId={selectedId} live={selectedSession.status === 'LIVE'} />
+
           {/* Live Metrics Row */}
           <section className="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
             <div className="rounded-xl border border-border bg-surface p-5">

@@ -13,6 +13,7 @@ import {
 } from 'lucide-react';
 import { useKabmeet } from '../context/KabmeetContext';
 import { KabmeetLoadingCard } from '../components/KabmeetLoader';
+import { EngagementPanel } from '../components/EngagementPanel';
 import { PillPulseButton } from '../components/KabmeetMoments';
 import type { AttendanceRecord, AuthUser, Community, KabSession } from '../types/kabmeet';
 
@@ -275,7 +276,9 @@ export function ProfilePage() {
         </div>
       </section>
 
-      <div className="mt-8 grid gap-8 lg:grid-cols-3">
+      <EngagementPanel />
+
+      <div className="mt-10 grid gap-8 lg:grid-cols-3">
         {/* My Sessions & Reminders */}
         <section className="space-y-4">
           <h2 className="flex items-center gap-2 font-display text-xl font-bold uppercase">

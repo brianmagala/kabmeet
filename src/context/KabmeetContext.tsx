@@ -17,6 +17,7 @@ export type AppRoute =
   | 'classes'
   | 'host-panel'
   | 'profile'
+  | 'leaderboard'
   | 'admin'
   | 'auth';
 
