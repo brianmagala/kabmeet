@@ -248,3 +248,191 @@ describe('events and the event page', () => {
     assert.equal(byAdmin.json.event.venue, 'Hall B');
   });
 });
+
+// ---------------------------------------------------------------------------------------------
+// Step 2: hackathon tools
+
+describe('hackathon teams, judging and privacy', () => {
+  let ev: any;
+  // Seven people: team A (creator + joiners), a person for a second team, two judges (one is the host).
+  const people: Record<string, { token: string; id: string }> = {};
+
+  before(async () => {
+    for (const [key, name] of [['b', 'Brenda'], ['c', 'Charles'], ['d', 'Diana'], ['e', 'Edwin'], ['f', 'Fiona'], ['judge', 'Jude Judge']]) {
+      const r = await register(`${key}.team@kab.ac.ug`, `${name} Student`);
+      people[key] = { token: r.token, id: r.user.id };
+    }
+    // The event is live now so that teams are open, and it ends later today.
+    const created = await call(
+      'POST',
+      '/api/events',
+      eventBody({ title: 'Kabale Hack Day', startsAt: iso(-3600_000), endsAt: iso(6 * 3600_000), hackathon: true, sessionIds: ['sess-ml-python'] }),
+      host.token,
+    );
+    assert.equal(created.status, 201, JSON.stringify(created.json));
+    ev = created.json.event;
+  });
+
+  const hack = (token?: string) => call('GET', `/api/events/${ev.id}/hackathon`, undefined, token);
+  const createTeam = (token: string, name: string) => call('POST', `/api/events/${ev.id}/teams`, { name, idea: 'Predict crop disease from phone photos.' }, token);
+  const joinTeam = (token: string, code: string) => call('POST', `/api/events/${ev.id}/teams/join`, { code }, token);
+
+  let teamA: any;
+  let teamB: any;
+
+  test('hackathon tools only exist on events that switched hackathon mode on', async () => {
+    const plain = await call('POST', '/api/events', eventBody({ title: 'Plain talk day' }), host.token);
+    const r = await call('POST', `/api/events/${plain.json.event.id}/teams`, { name: 'Nope', idea: 'x' }, member.token);
+    assert.equal(r.status, 404);
+  });
+
+  test('a member creates a team and gets a 6-character join code; other teams cannot see it', async () => {
+    const r = await createTeam(member.token, 'Kabale Coders');
+    assert.equal(r.status, 201, JSON.stringify(r.json));
+    teamA = r.json.team;
+    assert.match(teamA.joinCode, /^[A-HJ-NP-Z2-9]{6}$/);
+    assert.equal(teamA.members.length, 1);
+    // Others see the team but not its code.
+    const asOther = await hack(people.b.token);
+    assert.equal(asOther.json.teams[0].joinCode, null);
+    assert.equal((await hack()).json.teams[0].joinCode, null);
+    // Team mates and the host see it.
+    assert.equal((await hack(member.token)).json.teams[0].joinCode, teamA.joinCode);
+    assert.equal((await hack(host.token)).json.teams[0].joinCode, teamA.joinCode);
+  });
+
+  test('a join code works once per person, a person cannot be in two teams, and a visitor cannot join', async () => {
+    assert.equal((await joinTeam(people.b.token, teamA.joinCode)).status, 200);
+    assert.equal((await joinTeam(people.b.token, teamA.joinCode)).status, 409, 'same person, same code');
+    assert.equal((await createTeam(people.b.token, 'Second Team')).status, 409, 'cannot start another team');
+    const second = await createTeam(people.c.token, 'Night Owls');
+    assert.equal(second.status, 201);
+    teamB = second.json.team;
+    assert.equal((await joinTeam(people.b.token, teamB.joinCode)).status, 409, 'cannot join a second team');
+    assert.equal((await call('POST', `/api/events/${ev.id}/teams/join`, { code: teamA.joinCode })).status, 401);
+    assert.equal((await joinTeam(people.d.token, 'ZZZZZZ')).status, 404);
+    assert.equal((await createTeam(people.d.token, 'kabale coders')).status, 409, 'team names are unique');
+  });
+
+  test('a team holds at most 5 people', async () => {
+    assert.equal((await joinTeam(people.d.token, teamA.joinCode)).status, 200); // 3
+    assert.equal((await joinTeam(people.e.token, teamA.joinCode)).status, 200); // 4
+    assert.equal((await joinTeam(people.f.token, teamA.joinCode)).status, 200); // 5
+    assert.equal((await joinTeam(people.judge.token, teamA.joinCode)).status, 409);
+  });
+
+  test('only the creator renames; any member can submit; links must be https', async () => {
+    const url = `/api/events/${ev.id}/teams/${teamA.id}`;
+    assert.equal((await call('PATCH', url, { name: 'Hijack' }, people.b.token)).status, 403);
+    assert.equal((await call('PATCH', url, { name: 'Kabale Coders Pro' }, member.token)).status, 200);
+    assert.equal((await call('PATCH', url, { repoUrl: 'http://github.com/kab/x' }, people.b.token)).status, 400);
+    const ok = await call('PATCH', url, { repoUrl: 'https://github.com/kab/crop-ai', summary: 'We detect crop disease from a phone photo. It works offline.' }, people.b.token);
+    assert.equal(ok.status, 200);
+    assert.equal(ok.json.team.repoUrl, 'https://github.com/kab/crop-ai');
+    assert.equal((await call('PATCH', url, { summary: 'Not mine' }, people.judge.token)).status, 403);
+  });
+
+  test('only the host sets a demo slot', async () => {
+    const url = `/api/events/${ev.id}/teams/${teamA.id}/demo`;
+    assert.equal((await call('PUT', url, { demoAt: iso(3600_000) }, member.token)).status, 403);
+    const ok = await call('PUT', url, { demoAt: iso(3600_000) }, host.token);
+    assert.equal(ok.status, 200);
+    assert.ok(ok.json.team.demoAt);
+  });
+
+  test('the creator can remove a member; a member can leave; the team passes to the next person', async () => {
+    const del = (token: string, userId: string) => call('DELETE', `/api/events/${ev.id}/teams/${teamA.id}/members/${userId}`, undefined, token);
+    assert.equal((await del(people.b.token, people.d.id)).status, 403, 'a member cannot remove another');
+    assert.equal((await del(member.token, people.d.id)).status, 200);
+    assert.equal((await del(people.e.token, people.e.id)).status, 200, 'leave');
+    // d is free to join another team now
+    assert.equal((await joinTeam(people.d.token, teamB.joinCode)).status, 200);
+  });
+
+  // ----- judging -----
+  test('only the host adds judges, by the email of an existing account', async () => {
+    const url = `/api/events/${ev.id}/judges`;
+    assert.equal((await call('POST', url, { email: 'judge.team@kab.ac.ug' }, member.token)).status, 403);
+    assert.equal((await call('POST', url, { email: 'nobody@kab.ac.ug' }, host.token)).status, 404);
+    assert.equal((await call('POST', url, { email: 'b.team@kab.ac.ug' }, host.token)).status, 201); // Brenda judges, but is in team A
+    assert.equal((await call('POST', url, { email: 'judge.team@kab.ac.ug' }, host.token)).status, 201);
+    assert.equal((await call('POST', url, { email: 'judge.team@kab.ac.ug' }, host.token)).status, 409);
+  });
+
+  const score = (token: string, teamId: string, body: Record<string, unknown> = {}) =>
+    call('PUT', `/api/events/${ev.id}/scores/${teamId}`, { idea: 4, build: 3, demo: 5, impact: 4, comment: 'Clear problem, rough demo.', ...body }, token);
+
+  test('a judge cannot score their own team, a non-judge cannot score, scores must be whole numbers 1 to 5', async () => {
+    const own = await score(people.b.token, teamA.id);
+    assert.equal(own.status, 403);
+    assert.equal(own.json.code, 'OWN_TEAM');
+    assert.equal((await score(member.token, teamB.id)).status, 403);
+    assert.equal((await score(people.judge.token, teamA.id, { idea: 6 })).status, 400);
+    assert.equal((await score(people.judge.token, teamA.id, { build: 0 })).status, 400);
+    assert.equal((await score(people.judge.token, teamA.id, { demo: 3.5 })).status, 400);
+  });
+
+  test('scores and comments are private before the reveal, visible to judges (their own) and the host only', async () => {
+    assert.equal((await score(people.judge.token, teamA.id, { comment: 'SECRET-COMMENT-ONE' })).status, 200);
+    assert.equal((await score(people.judge.token, teamB.id, { idea: 2, build: 2, demo: 2, impact: 2, comment: 'SECRET-COMMENT-TWO' })).status, 200);
+    assert.equal((await score(people.b.token, teamB.id, { idea: 3, build: 3, demo: 3, impact: 3, comment: 'SECRET-COMMENT-THREE' })).status, 200);
+
+    for (const [who, token] of [['visitor', undefined], ['member', member.token], ['team mate', people.d.token], ['other host', undefined]] as const) {
+      if (who === 'other host') continue;
+      const view = await hack(token);
+      const text = JSON.stringify(view.json);
+      assert.ok(!text.includes('SECRET-COMMENT'), `${who} must not see comments`);
+      assert.equal(view.json.results, null, `${who} must not see results`);
+      assert.deepEqual(view.json.myScores, []);
+      assert.equal(view.json.judging, null);
+    }
+    // A judge sees only their own scores.
+    const judgeView = await hack(people.b.token);
+    const judgeText = JSON.stringify(judgeView.json);
+    assert.ok(judgeText.includes('SECRET-COMMENT-THREE'));
+    assert.ok(!judgeText.includes('SECRET-COMMENT-ONE') && !judgeText.includes('SECRET-COMMENT-TWO'), 'a judge must not see other judges');
+    assert.equal(judgeView.json.myScores.length, 1);
+    // The host sees everything and who has scored how many teams.
+    const hostView = await hack(host.token);
+    assert.equal(hostView.json.judging.scores.length, 3);
+    assert.ok(JSON.stringify(hostView.json).includes('SECRET-COMMENT-ONE'));
+    // The event itself never carries scores.
+    const plain = JSON.stringify((await call('GET', `/api/events/${ev.slug}`, undefined, host.token)).json);
+    assert.ok(!plain.includes('SECRET-COMMENT'));
+  });
+
+  test('only the host can reveal; after the reveal everyone sees the ranking with averages, never comments', async () => {
+    assert.equal((await call('POST', `/api/events/${ev.id}/reveal`, {}, member.token)).status, 403);
+    assert.equal((await call('POST', `/api/events/${ev.id}/reveal`, {}, people.judge.token)).status, 403);
+    const r = await call('POST', `/api/events/${ev.id}/reveal`, {}, host.token);
+    assert.equal(r.status, 200, JSON.stringify(r.json));
+    assert.equal((await call('POST', `/api/events/${ev.id}/reveal`, {}, host.token)).status, 409);
+
+    const view = await hack(); // a visitor
+    assert.ok(view.json.resultsRevealed);
+    const ranking = view.json.results.ranking;
+    assert.equal(ranking.length, 2);
+    // Team A: one judge, (4+3+5+4)/4 = 4. Team B: two judges, ((2+3)/2 each) = 2.5.
+    assert.equal(ranking[0].teamName, 'Kabale Coders Pro');
+    assert.equal(ranking[0].rank, 1);
+    assert.deepEqual(ranking[0].average, { idea: 4, build: 3, demo: 5, impact: 4 });
+    assert.equal(ranking[0].total, 4);
+    assert.equal(ranking[1].teamName, 'Night Owls');
+    assert.equal(ranking[1].total, 2.5);
+    assert.ok(!JSON.stringify(view.json).includes('SECRET-COMMENT'));
+    // Locked afterwards.
+    assert.equal((await score(people.judge.token, teamB.id)).status, 409);
+  });
+});
+
+describe('ranking rules', () => {
+  test('ties share a rank and unscored teams are left out', async () => {
+    const { computeRanking } = await import('../server/events');
+    const mk = (teamId: string, v: number) => ({ teamId, idea: v, build: v, demo: v, impact: v });
+    const ranking = computeRanking(
+      [{ id: 'a', name: 'Alpha' }, { id: 'b', name: 'Beta' }, { id: 'c', name: 'Gamma' }, { id: 'd', name: 'Delta' }],
+      [mk('a', 5), mk('b', 5), mk('c', 3)],
+    );
+    assert.deepEqual(ranking.map((r) => [r.teamName, r.rank]), [['Alpha', 1], ['Beta', 1], ['Gamma', 3]]);
+  });
+});

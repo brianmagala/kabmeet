@@ -4,7 +4,18 @@
 import { randomInt, randomUUID } from 'node:crypto';
 import type { Express, NextFunction, Request, RequestHandler, Response } from 'express';
 import { z } from 'zod';
-import { EVENT_LIMITS, type EventRecord, type EventSessionSummary, type EventView } from '../src/shared/events';
+import {
+  EVENT_LIMITS,
+  JUDGE_CRITERIA,
+  TEAM_MAX_MEMBERS,
+  type EventRecord,
+  type EventSessionSummary,
+  type EventView,
+  type JudgeCriterion,
+  type RankedTeam,
+  type ResultsView,
+  type TeamView,
+} from '../src/shared/events';
 import { store, type StoredUser } from './store';
 
 // ---------------------------------------------------------------------------------------------
@@ -329,6 +340,440 @@ export function registerEventRoutes(deps: EventDeps): void {
     res.json({ event: toView(ev, req.authUser!) });
   });
 
-  void asyncRoute;
-  void randomInt;
+  registerHackathonRoutes(deps);
+}
+
+// ---------------------------------------------------------------------------------------------
+// Step 2: hackathon tools (teams, submissions, judges, scores, reveal)
+
+const JOIN_CODE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; // no O, 0, I or 1: easy to read out loud
+
+function newJoinCode(eventId: string): string {
+  const taken = new Set(eventsData().teams.filter((t) => t.eventId === eventId).map((t) => t.joinCode));
+  for (let attempt = 0; attempt < 50; attempt += 1) {
+    let code = '';
+    for (let i = 0; i < 6; i += 1) code += JOIN_CODE_ALPHABET[randomInt(JOIN_CODE_ALPHABET.length)];
+    if (!taken.has(code)) return code;
+  }
+  throw new Error('Could not make a free join code.');
+}
+
+function displayName(userId: string): string {
+  const u = store.state.users.find((x) => x.id === userId);
+  return u ? u.nickname?.trim() || u.fullName : 'Former member';
+}
+
+function teamOf(eventId: string, userId: string): StoredTeam | undefined {
+  return eventsData().teams.find((t) => t.eventId === eventId && t.memberIds.includes(userId));
+}
+
+function isJudgeOf(eventId: string, userId: string): boolean {
+  return (eventsData().judges[eventId] ?? []).includes(userId);
+}
+
+function teamView(team: StoredTeam, viewer: StoredUser | null, ev: EventRecord): TeamView {
+  const isMember = Boolean(viewer && team.memberIds.includes(viewer.id));
+  return {
+    id: team.id,
+    eventId: team.eventId,
+    name: team.name,
+    idea: team.idea,
+    members: team.memberIds.map((id) => ({ userId: id, name: displayName(id), isCreator: id === team.createdBy })),
+    repoUrl: team.repoUrl,
+    summary: team.summary,
+    demoAt: team.demoAt,
+    // The code is a secret between team mates and the host.
+    joinCode: isMember || canManageEvent(viewer, ev) ? team.joinCode : null,
+    isMine: isMember,
+    isCreator: Boolean(viewer && team.createdBy === viewer.id),
+  };
+}
+
+const round2 = (n: number) => Math.round(n * 100) / 100;
+
+/** Teams ranked by the mean of their four criterion averages. Teams nobody scored are left out. Ties share a rank. */
+export function computeRanking(
+  teams: Array<{ id: string; name: string }>,
+  scores: Array<{ teamId: string } & Record<JudgeCriterion, number>>,
+): RankedTeam[] {
+  const rows: Array<Omit<RankedTeam, 'rank'>> = [];
+  for (const team of teams) {
+    const mine = scores.filter((x) => x.teamId === team.id);
+    if (mine.length === 0) continue;
+    const average = {} as Record<JudgeCriterion, number>;
+    for (const c of JUDGE_CRITERIA) average[c] = round2(mine.reduce((sum, x) => sum + x[c], 0) / mine.length);
+    const total = round2(JUDGE_CRITERIA.reduce((sum, c) => sum + average[c], 0) / JUDGE_CRITERIA.length);
+    rows.push({ teamId: team.id, teamName: team.name, average, total, judges: mine.length });
+  }
+  rows.sort((a, b) => b.total - a.total || a.teamName.localeCompare(b.teamName));
+  const ranked: RankedTeam[] = [];
+  rows.forEach((row, i) => {
+    const rank = i > 0 && rows[i - 1].total === row.total ? ranked[i - 1].rank : i + 1;
+    ranked.push({ rank, ...row });
+  });
+  return ranked;
+}
+
+function resultsFor(ev: EventRecord): ResultsView | null {
+  if (!ev.resultsRevealedAt) return null;
+  const data = eventsData();
+  const teams = data.teams.filter((t) => t.eventId === ev.id);
+  const scores = data.scores.filter((x) => x.eventId === ev.id);
+  return { revealedAt: ev.resultsRevealedAt, ranking: computeRanking(teams, scores) };
+}
+
+const teamNameSchema = z.string().trim().min(2).max(40);
+const ideaSchema = z.string().trim().min(1).max(300);
+
+const createTeamSchema = z.object({ name: teamNameSchema, idea: ideaSchema });
+const joinTeamSchema = z.object({ code: z.string().trim().min(4).max(12) });
+const patchTeamSchema = z
+  .object({
+    name: teamNameSchema,
+    idea: ideaSchema,
+    repoUrl: z.union([httpsUrl, z.null()]),
+    summary: z.union([z.string().trim().min(1).max(400), z.null()]),
+  })
+  .partial();
+const demoSchema = z.object({ demoAt: z.union([isoDate, z.null()]) });
+const addJudgeSchema = z.object({ email: z.string().trim().toLowerCase().email().max(200) });
+const scoreSchema = z.object({
+  idea: z.number().int().min(1).max(5),
+  build: z.number().int().min(1).max(5),
+  demo: z.number().int().min(1).max(5),
+  impact: z.number().int().min(1).max(5),
+  comment: z.string().trim().max(500).default(''),
+});
+
+const MAX_JUDGES = 20;
+
+function registerHackathonRoutes(deps: EventDeps): void {
+  const { app, requireAuth, requireRoles, optionalUser, rateLimit } = deps;
+
+  app.use('/api/events/:id/teams/join', rateLimit('team-join', 30, 10 * 60 * 1000));
+
+  /** Finds a published hackathon the person may act on, or answers the request and returns null. */
+  function hackathonOr404(req: Request, res: Response, viewer: StoredUser | null): EventRecord | null {
+    const ev = findEvent(String(req.params.id));
+    if (!ev || !canSeeEvent(viewer, ev) || !ev.hackathon) {
+      res.status(404).json({ message: 'Hackathon not found.' });
+      return null;
+    }
+    return ev;
+  }
+
+  /** Teams are open from publication until the event ends or results are revealed. */
+  function signupOpen(ev: EventRecord, res: Response): boolean {
+    if (ev.resultsRevealedAt || Date.now() >= new Date(ev.endsAt).getTime()) {
+      res.status(409).json({ message: 'Teams are closed for this hackathon.' });
+      return false;
+    }
+    return true;
+  }
+
+  // One call for the whole hackathon panel. What a person sees depends on who they are (see the notes below).
+  app.get('/api/events/:id/hackathon', (req, res) => {
+    const viewer = optionalUser(req);
+    const ev = hackathonOr404(req, res, viewer);
+    if (!ev) return;
+    const data = eventsData();
+    const teams = data.teams.filter((t) => t.eventId === ev.id);
+    const myTeam = viewer ? teamOf(ev.id, viewer.id) : undefined;
+    const manager = canManageEvent(viewer, ev);
+    const judge = Boolean(viewer && isJudgeOf(ev.id, viewer.id));
+    const allScores = data.scores.filter((x) => x.eventId === ev.id);
+
+    res.json({
+      teams: teams.map((t) => teamView(t, viewer, ev)),
+      myTeamId: myTeam?.id ?? null,
+      judges: (data.judges[ev.id] ?? []).map((id) => ({ userId: manager ? id : undefined, name: displayName(id) })),
+      isJudge: judge,
+      canManage: manager,
+      signupOpen: !ev.resultsRevealedAt && Date.now() < new Date(ev.endsAt).getTime(),
+      resultsRevealed: Boolean(ev.resultsRevealedAt),
+      // Public only after the host presses Reveal: ranking and criterion averages. No comments, no judge names.
+      results: resultsFor(ev),
+      // A judge sees their own scores and comments, nobody else's.
+      myScores: judge
+        ? allScores.filter((x) => x.judgeId === viewer!.id).map(({ teamId, idea, build, demo, impact, comment }) => ({ teamId, idea, build, demo, impact, comment }))
+        : [],
+      // The host (and an admin) see everything before the reveal, so they can chase missing scores.
+      judging: manager
+        ? {
+            scores: allScores.map((x) => ({ teamId: x.teamId, judge: displayName(x.judgeId), idea: x.idea, build: x.build, demo: x.demo, impact: x.impact, comment: x.comment })),
+            progress: (data.judges[ev.id] ?? []).map((id) => ({ judge: displayName(id), scored: allScores.filter((x) => x.judgeId === id).length, of: teams.filter((t) => !t.memberIds.includes(id)).length })),
+          }
+        : null,
+    });
+  });
+
+  app.post('/api/events/:id/teams', requireAuth, (req: AuthedEventRequest, res) => {
+    const user = req.authUser!;
+    const ev = hackathonOr404(req, res, user);
+    if (!ev || !signupOpen(ev, res)) return;
+    if (ev.status !== 'PUBLISHED') {
+      res.status(409).json({ message: 'Teams open when the event is published.' });
+      return;
+    }
+    const parsed = createTeamSchema.safeParse(req.body);
+    if (!parsed.success) {
+      res.status(400).json({ message: zodMessage(parsed.error) });
+      return;
+    }
+    if (teamOf(ev.id, user.id)) {
+      res.status(409).json({ message: 'You are already in a team for this hackathon.' });
+      return;
+    }
+    const data = eventsData();
+    if (data.teams.some((t) => t.eventId === ev.id && t.name.toLowerCase() === parsed.data.name.toLowerCase())) {
+      res.status(409).json({ message: 'Another team already uses that name.' });
+      return;
+    }
+    const team: StoredTeam = {
+      id: `team-${randomUUID()}`,
+      eventId: ev.id,
+      name: parsed.data.name,
+      idea: parsed.data.idea,
+      joinCode: newJoinCode(ev.id),
+      memberIds: [user.id],
+      createdBy: user.id,
+      repoUrl: null,
+      summary: null,
+      demoAt: null,
+      createdAt: new Date().toISOString(),
+    };
+    data.teams.push(team);
+    store.save();
+    res.status(201).json({ team: teamView(team, user, ev) });
+  });
+
+  app.post('/api/events/:id/teams/join', requireAuth, (req: AuthedEventRequest, res) => {
+    const user = req.authUser!;
+    const ev = hackathonOr404(req, res, user);
+    if (!ev || !signupOpen(ev, res)) return;
+    const parsed = joinTeamSchema.safeParse(req.body);
+    if (!parsed.success) {
+      res.status(400).json({ message: 'Enter the 6-character team code.' });
+      return;
+    }
+    if (teamOf(ev.id, user.id)) {
+      res.status(409).json({ message: 'You are already in a team for this hackathon.' });
+      return;
+    }
+    const code = parsed.data.code.toUpperCase().replace(/[^A-Z0-9]/g, '');
+    const team = eventsData().teams.find((t) => t.eventId === ev.id && t.joinCode === code);
+    if (!team) {
+      res.status(404).json({ message: 'That code does not match a team in this hackathon.' });
+      return;
+    }
+    if (team.memberIds.length >= TEAM_MAX_MEMBERS) {
+      res.status(409).json({ message: `That team is full (${TEAM_MAX_MEMBERS} members).` });
+      return;
+    }
+    team.memberIds.push(user.id);
+    store.save();
+    res.json({ team: teamView(team, user, ev) });
+  });
+
+  app.patch('/api/events/:id/teams/:teamId', requireAuth, (req: AuthedEventRequest, res) => {
+    const user = req.authUser!;
+    const ev = hackathonOr404(req, res, user);
+    if (!ev) return;
+    const team = eventsData().teams.find((t) => t.id === String(req.params.teamId) && t.eventId === ev.id);
+    if (!team || !team.memberIds.includes(user.id)) {
+      res.status(team ? 403 : 404).json({ message: team ? 'Only members of this team can change it.' : 'Team not found.' });
+      return;
+    }
+    if (ev.resultsRevealedAt) {
+      res.status(409).json({ message: 'Results are out, so teams are locked.' });
+      return;
+    }
+    const parsed = patchTeamSchema.safeParse(req.body);
+    if (!parsed.success) {
+      res.status(400).json({ message: zodMessage(parsed.error) });
+      return;
+    }
+    const patch = parsed.data;
+    // Renaming and the project idea belong to the creator; anyone in the team can send the submission.
+    if ((patch.name !== undefined || patch.idea !== undefined) && team.createdBy !== user.id) {
+      res.status(403).json({ message: 'Only the person who created the team can rename it or change the idea.' });
+      return;
+    }
+    if (patch.name !== undefined) {
+      const clash = eventsData().teams.some((t) => t.id !== team.id && t.eventId === ev.id && t.name.toLowerCase() === patch.name!.toLowerCase());
+      if (clash) {
+        res.status(409).json({ message: 'Another team already uses that name.' });
+        return;
+      }
+      team.name = patch.name;
+    }
+    if (patch.idea !== undefined) team.idea = patch.idea;
+    if (patch.repoUrl !== undefined) team.repoUrl = patch.repoUrl;
+    if (patch.summary !== undefined) team.summary = patch.summary;
+    store.save();
+    res.json({ team: teamView(team, user, ev) });
+  });
+
+  // The host picks when each team demos.
+  app.put('/api/events/:id/teams/:teamId/demo', requireAuth, requireRoles('HOST'), (req: AuthedEventRequest, res) => {
+    const ev = hackathonOr404(req, res, req.authUser!);
+    if (!ev) return;
+    if (!canManageEvent(req.authUser, ev)) {
+      res.status(403).json({ message: 'Only the host of this event, or an admin, can set demo times.' });
+      return;
+    }
+    const team = eventsData().teams.find((t) => t.id === String(req.params.teamId) && t.eventId === ev.id);
+    const parsed = demoSchema.safeParse(req.body);
+    if (!team) {
+      res.status(404).json({ message: 'Team not found.' });
+      return;
+    }
+    if (!parsed.success) {
+      res.status(400).json({ message: zodMessage(parsed.error) });
+      return;
+    }
+    team.demoAt = parsed.data.demoAt;
+    store.save();
+    res.json({ team: teamView(team, req.authUser!, ev) });
+  });
+
+  // Remove a member (creator), or leave (anyone, for themselves).
+  app.delete('/api/events/:id/teams/:teamId/members/:userId', requireAuth, (req: AuthedEventRequest, res) => {
+    const user = req.authUser!;
+    const ev = hackathonOr404(req, res, user);
+    if (!ev) return;
+    const data = eventsData();
+    const team = data.teams.find((t) => t.id === String(req.params.teamId) && t.eventId === ev.id);
+    const targetId = String(req.params.userId);
+    if (!team || !team.memberIds.includes(targetId)) {
+      res.status(404).json({ message: 'That member is not in this team.' });
+      return;
+    }
+    if (ev.resultsRevealedAt) {
+      res.status(409).json({ message: 'Results are out, so teams are locked.' });
+      return;
+    }
+    const leaving = targetId === user.id;
+    if (!leaving && team.createdBy !== user.id) {
+      res.status(403).json({ message: 'Only the team creator can remove another member.' });
+      return;
+    }
+    team.memberIds = team.memberIds.filter((id) => id !== targetId);
+    if (team.memberIds.length === 0) {
+      data.teams = data.teams.filter((t) => t.id !== team.id);
+      data.scores = data.scores.filter((x) => x.teamId !== team.id);
+    } else if (team.createdBy === targetId) {
+      team.createdBy = team.memberIds[0]; // the next person in the team takes over
+    }
+    store.save();
+    res.json({ ok: true });
+  });
+
+  // Judges. The host adds them by the email of an existing account; only names are shown to others.
+  app.post('/api/events/:id/judges', requireAuth, requireRoles('HOST'), (req: AuthedEventRequest, res) => {
+    const ev = hackathonOr404(req, res, req.authUser!);
+    if (!ev) return;
+    if (!canManageEvent(req.authUser, ev)) {
+      res.status(403).json({ message: 'Only the host of this event, or an admin, can add judges.' });
+      return;
+    }
+    const parsed = addJudgeSchema.safeParse(req.body);
+    if (!parsed.success) {
+      res.status(400).json({ message: 'Enter the email of a Kabmeet account.' });
+      return;
+    }
+    const target = store.state.users.find((u) => u.email.toLowerCase() === parsed.data.email && u.isActive);
+    if (!target) {
+      res.status(404).json({ message: 'No Kabmeet account uses that email. Ask them to register first.' });
+      return;
+    }
+    const list = (eventsData().judges[ev.id] ??= []);
+    if (list.includes(target.id)) {
+      res.status(409).json({ message: `${displayName(target.id)} is already a judge.` });
+      return;
+    }
+    if (list.length >= MAX_JUDGES) {
+      res.status(409).json({ message: `At most ${MAX_JUDGES} judges.` });
+      return;
+    }
+    list.push(target.id);
+    store.save();
+    res.status(201).json({ judge: { userId: target.id, name: displayName(target.id) } });
+  });
+
+  app.delete('/api/events/:id/judges/:userId', requireAuth, requireRoles('HOST'), (req: AuthedEventRequest, res) => {
+    const ev = hackathonOr404(req, res, req.authUser!);
+    if (!ev) return;
+    if (!canManageEvent(req.authUser, ev)) {
+      res.status(403).json({ message: 'Only the host of this event, or an admin, can remove judges.' });
+      return;
+    }
+    if (ev.resultsRevealedAt) {
+      res.status(409).json({ message: 'Results are out, so judges are locked.' });
+      return;
+    }
+    const data = eventsData();
+    const id = String(req.params.userId);
+    data.judges[ev.id] = (data.judges[ev.id] ?? []).filter((x) => x !== id);
+    data.scores = data.scores.filter((x) => !(x.eventId === ev.id && x.judgeId === id));
+    store.save();
+    res.json({ ok: true });
+  });
+
+  // A judge scores one team. Saving again replaces their earlier score for that team.
+  app.put('/api/events/:id/scores/:teamId', requireAuth, (req: AuthedEventRequest, res) => {
+    const user = req.authUser!;
+    const ev = hackathonOr404(req, res, user);
+    if (!ev) return;
+    if (!isJudgeOf(ev.id, user.id)) {
+      res.status(403).json({ message: 'Only judges of this hackathon can score teams.' });
+      return;
+    }
+    if (ev.resultsRevealedAt) {
+      res.status(409).json({ message: 'Results are out, so scores are locked.' });
+      return;
+    }
+    const team = eventsData().teams.find((t) => t.id === String(req.params.teamId) && t.eventId === ev.id);
+    if (!team) {
+      res.status(404).json({ message: 'Team not found.' });
+      return;
+    }
+    if (team.memberIds.includes(user.id)) {
+      res.status(403).json({ code: 'OWN_TEAM', message: 'You cannot score your own team.' });
+      return;
+    }
+    const parsed = scoreSchema.safeParse(req.body);
+    if (!parsed.success) {
+      res.status(400).json({ message: 'Give each of Idea, Build, Demo and Impact a whole number from 1 to 5.' });
+      return;
+    }
+    const data = eventsData();
+    const now = new Date().toISOString();
+    const existing = data.scores.find((x) => x.eventId === ev.id && x.teamId === team.id && x.judgeId === user.id);
+    if (existing) Object.assign(existing, parsed.data, { updatedAt: now });
+    else data.scores.push({ eventId: ev.id, teamId: team.id, judgeId: user.id, ...parsed.data, updatedAt: now });
+    store.save();
+    res.json({ ok: true, score: { teamId: team.id, ...parsed.data } });
+  });
+
+  // The host reveals the results. There is no way back, so nobody can doubt the order afterwards.
+  app.post('/api/events/:id/reveal', requireAuth, requireRoles('HOST'), (req: AuthedEventRequest, res) => {
+    const ev = hackathonOr404(req, res, req.authUser!);
+    if (!ev) return;
+    if (!canManageEvent(req.authUser, ev)) {
+      res.status(403).json({ message: 'Only the host of this event, or an admin, can reveal results.' });
+      return;
+    }
+    if (ev.resultsRevealedAt) {
+      res.status(409).json({ message: 'Results were already revealed.' });
+      return;
+    }
+    if (!eventsData().scores.some((x) => x.eventId === ev.id)) {
+      res.status(409).json({ message: 'No team has been scored yet.' });
+      return;
+    }
+    ev.resultsRevealedAt = new Date().toISOString();
+    store.save();
+    res.json({ results: resultsFor(ev) });
+  });
 }
