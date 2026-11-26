@@ -5,6 +5,7 @@ import { useLoadingStage } from '../hooks/useLoadingStage';
 import { SlowStageNotice } from '../components/KabmeetMoments';
 import { EventCountdown } from '../components/EventCountdown';
 import { EventEditor } from '../components/EventEditor';
+import { HackathonPanel } from '../components/HackathonPanel';
 import { downloadIcs } from '../lib/ics';
 import { formatRange, formatTime, groupByDay, initials } from '../lib/eventFormat';
 import type { EventSessionSummary, EventView } from '../shared/events';
@@ -209,6 +210,8 @@ export function EventPage() {
           </ul>
         </section>
       )}
+
+      {event.hackathon && event.status === 'PUBLISHED' && <HackathonPanel event={event} />}
 
       {editing && (
         <EventEditor
