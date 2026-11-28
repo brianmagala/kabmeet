@@ -97,7 +97,7 @@ describe('blank embed list', () => {
           }
         });
       });
-      const res = await fetch(`http://127.0.0.1:${port2}/`);
+      const res = await fetch(`http://127.0.0.1:${port2}/api/sessions`);
       assert.match(res.headers.get('content-security-policy') ?? '', /frame-ancestors 'self'$/, 'empty list means self only');
     } finally {
       child.kill();
