@@ -14,6 +14,7 @@ import {
 import { useKabmeet } from '../context/KabmeetContext';
 import { KabmeetLoadingCard } from '../components/KabmeetLoader';
 import { EngagementPanel } from '../components/EngagementPanel';
+import { NotificationSettings } from '../components/NotificationSettings';
 import { PillPulseButton } from '../components/KabmeetMoments';
 import type { AttendanceRecord, AuthUser, Community, KabSession } from '../types/kabmeet';
 
@@ -59,7 +60,7 @@ function resizeAvatarToDataUrl(file: File): Promise<string> {
 }
 
 export function ProfilePage() {
-  const { apiFetch, navigate, user, updateUserProfile, pushToast, isSlowNetwork } = useKabmeet();
+  const { apiFetch, navigate, user, updateUserProfile, pushToast, isSlowNetwork, logout } = useKabmeet();
   const [data, setData] = useState<DashboardResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -276,7 +277,18 @@ export function ProfilePage() {
         </div>
       </section>
 
-      <EngagementPanel />
+      <div className="space-y-6">
+        <EngagementPanel />
+        <NotificationSettings />
+      </div>
+
+      <button
+        type="button"
+        onClick={() => void logout()}
+        className="mt-6 inline-flex h-11 w-full items-center justify-center rounded-full border border-border text-sm font-medium sm:hidden"
+      >
+        Sign out
+      </button>
 
       <div className="mt-10 grid gap-8 lg:grid-cols-3">
         {/* My Sessions & Reminders */}

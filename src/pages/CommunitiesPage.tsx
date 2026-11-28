@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useState } from 'react';
+import { announceFollow } from '../lib/push';
 import { ArrowLeft, CalendarDays, MessageSquare, Play, Users } from 'lucide-react';
 import { useKabmeet } from '../context/KabmeetContext';
 import { ShimmerGrid, SlowStageNotice } from '../components/KabmeetMoments';
@@ -63,6 +64,7 @@ export function CommunitiesPage() {
         `/api/communities/${slug}/follow`,
         { method: 'POST' },
       );
+      if (res.isFollowing) announceFollow();
       if (detail && detail.community.slug === slug) {
         setDetail({
           ...detail,

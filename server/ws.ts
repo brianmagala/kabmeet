@@ -2,8 +2,10 @@ import { isSameOrigin, sessionTokenFromCookies } from './session-cookie';
 import type { Server as HttpServer } from 'node:http';
 import { WebSocket, WebSocketServer } from 'ws';
 import { hashToken, isStaffOrHost } from './auth';
+import { notifyAward, notifyHandApproved, setNotificationListener } from './notifications';
 import {
   presenceEnter,
+  startPresenceCheckpoint,
   presenceLeave,
   recordChat,
   recordPollVote,
@@ -140,7 +142,7 @@ export function canUserAccessSession(sessionId: string, user: StoredUser | null)
 export function buildRealtimeSnapshot(sessionId: string): SessionRealtimeState {
   const clients = sessionClients.get(sessionId);
   const mod = store.getModeration(sessionId);
-  const liveCount = Math.max(clients ? clients.size : 0, 1);
+  const liveCount = Math.max(getLiveViewerCount(sessionId), 1);
   if (liveCount > mod.peakViewers) {
     mod.peakViewers = liveCount;
     const sess = store.state.sessions.find((s) => s.id === sessionId);
@@ -153,7 +155,7 @@ export function buildRealtimeSnapshot(sessionId: string): SessionRealtimeState {
 
   return {
     sessionId,
-    viewerCount: clients ? clients.size : 0,
+    viewerCount: getLiveViewerCount(sessionId),
     peakViewers: mod.peakViewers,
     chatLocked: mod.chatLocked,
     slowModeSeconds: mod.slowModeSeconds,
@@ -202,8 +204,21 @@ export function attachWebSocketServer(httpServer: HttpServer): void {
   // Room slides are sent as images (up to 550 KB of text), so the limit sits just above that.
   const wss = new WebSocketServer({ server: httpServer, path: '/ws', maxPayload: 640 * 1024 });
 
+  startPresenceCheckpoint();
+
+  // The bell refreshes at once on any page that has a connection open (other pages poll).
+  setNotificationListener((userId, n) => {
+    const packet = JSON.stringify({ event: 'notification:new', payload: { id: n.id, kind: n.kind } });
+    for (const set of sessionClients.values()) {
+      for (const c of set) {
+        if (c.user?.id === userId && c.ws.readyState === WebSocket.OPEN) c.ws.send(packet);
+      }
+    }
+  });
+
   // Badges and streaks are told to the person on every connection they have open.
   setAwardNotifier((userId, notice) => {
+    notifyAward(userId, notice); // also lands in the bell (and push, if allowed)
     const packet = JSON.stringify({ event: 'engagement:award', payload: notice });
     for (const set of sessionClients.values()) {
       for (const c of set) {
@@ -249,9 +264,10 @@ export function attachWebSocketServer(httpServer: HttpServer): void {
     const sess = store.state.sessions.find((s) => s.id === sessionId);
     const mod = store.getModeration(sessionId);
     if (sess) {
-      sess.viewerCount = clients.size;
-      if (clients.size > mod.peakViewers) {
-        mod.peakViewers = clients.size;
+      const liveNow = getLiveViewerCount(sessionId);
+      sess.viewerCount = liveNow;
+      if (liveNow > mod.peakViewers) {
+        mod.peakViewers = liveNow;
         sess.peakViewers = Math.max(sess.peakViewers, mod.peakViewers);
       }
       store.save();
@@ -269,7 +285,7 @@ export function attachWebSocketServer(httpServer: HttpServer): void {
     );
 
     broadcastToSession(sessionId, 'presence:update', {
-      viewerCount: clients.size,
+      viewerCount: getLiveViewerCount(sessionId),
       peakViewers: mod.peakViewers,
     });
 
@@ -665,6 +681,11 @@ export function attachWebSocketServer(httpServer: HttpServer): void {
         const target = participants.get(targetClientId);
         if (target) {
           const promote = event === 'room:approve_speaker';
+          const hadHandUp = target.handRaised;
+          const targetSession = store.state.sessions.find((x) => x.id === sessionId);
+          if (promote && hadHandUp && !target.isSpeaker && target.userId && targetSession) {
+            notifyHandApproved(target.userId, targetSession);
+          }
           target.isSpeaker = promote;
           target.handRaised = false;
           target.mutedByHost = false;
@@ -823,11 +844,11 @@ export function attachWebSocketServer(httpServer: HttpServer): void {
       const waiting = getWaitingMap(sessionId);
       const changedRoom = participants.delete(meta.clientId) || waiting.delete(meta.clientId);
       if (sess) {
-        sess.viewerCount = clients.size;
+        sess.viewerCount = getLiveViewerCount(sessionId);
         store.save();
       }
       broadcastToSession(sessionId, 'presence:update', {
-        viewerCount: clients.size,
+        viewerCount: getLiveViewerCount(sessionId),
         peakViewers: mod.peakViewers,
       });
       if (changedRoom) {

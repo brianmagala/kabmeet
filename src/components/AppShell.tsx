@@ -1,6 +1,5 @@
 import React, { useState } from 'react';
 import {
-  Bell,
   CalendarDays,
   Download,
   Gauge,
@@ -18,6 +17,8 @@ import {
 import { useKabmeet, type AppRoute } from '../context/KabmeetContext';
 import { useOnlineStatus, usePWAInstall } from '../hooks/usePWAInstall';
 import { KabmeetSignalPrism, TopNetworkBar } from './KabmeetLoader';
+import { NotificationBell } from './NotificationBell';
+import { PushOptIn } from './PushOptIn';
 import { SiteFooter } from './SiteFooter';
 
 export function PWAInstallButton() {
@@ -113,8 +114,6 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     isSlowNetwork,
   } = useKabmeet();
   const isOnline = useOnlineStatus();
-
-  const [notifOpen, setNotifOpen] = useState(false);
 
   const navLinks: Array<{ key: AppRoute; label: string; visible: boolean }> = [
     { key: 'discover', label: 'Discover', visible: true },
@@ -233,15 +232,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               )}
             </button>
 
-            <button
-              type="button"
-              onClick={() => setNotifOpen((p) => !p)}
-              aria-expanded={notifOpen}
-              aria-label="Open notifications"
-              className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-white/25 bg-white/10 text-white transition-colors duration-150 hover:border-amber-gold hover:bg-white/15 sm:h-10 sm:w-10"
-            >
-              <Bell className="h-4 w-4" strokeWidth={2} aria-hidden="true" />
-            </button>
+            <NotificationBell buttonClass="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-white/25 bg-white/10 text-white transition-colors duration-150 hover:border-amber-gold hover:bg-white/15 sm:h-10 sm:w-10" />
 
             {user ? (
               <div className="flex items-center gap-1 sm:gap-1.5">
@@ -268,7 +259,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                   onClick={logout}
                   aria-label="Sign out"
                   title="Sign out"
-                  className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-white/25 bg-white/10 text-white transition-colors duration-150 hover:border-live-red hover:bg-live-red/20 sm:h-10 sm:w-10"
+                  className="hidden h-9 w-9 shrink-0 items-center justify-center rounded-full border border-white/25 bg-white/10 text-white transition-colors duration-150 hover:border-live-red hover:bg-live-red/20 sm:inline-flex sm:h-10 sm:w-10"
                 >
                   <LogOut className="h-4 w-4" strokeWidth={2} aria-hidden="true" />
                 </button>
@@ -283,29 +274,6 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               </button>
             )}
 
-            {notifOpen && (
-              <div
-                role="dialog"
-                aria-label="Notifications"
-                className="absolute right-0 top-12 z-50 w-72 rounded-xl border border-border bg-surface-elevated p-4 text-foreground shadow-lg"
-              >
-                <div className="flex items-center justify-between border-b border-border pb-2">
-                  <span className="font-display text-sm font-semibold uppercase tracking-wider">
-                    Notifications
-                  </span>
-                  <button
-                    type="button"
-                    onClick={() => setNotifOpen(false)}
-                    className="text-xs font-medium text-kab-blue hover:underline dark:text-signal-green"
-                  >
-                    Close
-                  </button>
-                </div>
-                <p className="py-3 text-xs leading-relaxed text-muted">
-                  Reminders you set on upcoming IndabaX, KAB AI, or virtual class sessions appear here.
-                </p>
-              </div>
-            )}
           </div>
         </div>
       </header>
@@ -347,6 +315,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       </nav>
 
       <OfflineIndicator />
+      <PushOptIn />
 
       {/* Poor / Slow Network Floating Pill with Kabmeet Signal Prism */}
       {isOnline && (isSlowRequest || (isSlowConnection && isBusy)) && (

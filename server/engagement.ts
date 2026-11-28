@@ -169,6 +169,11 @@ function finish(userId: string, now: Date, extra: Partial<AwardNotice> = {}): vo
   if (badges.length > 0 || extra.streakWeeks) notifier?.(userId, { badges, ...extra });
 }
 
+/** A host went live in a public session: the "On the Mic" badge arrives now, not on their next Profile visit. */
+export function recordHostStarted(userId: string, now: Date = new Date()): void {
+  finish(userId, now);
+}
+
 function trimPerSession(e: UserEngagement): void {
   const ids = Object.keys(e.perSession);
   for (const id of ids.slice(0, Math.max(0, ids.length - MAX_PER_SESSION_RECORDS))) delete e.perSession[id];
@@ -307,8 +312,41 @@ export function presenceLeave(sessionId: string, userId: string | null, viewersN
   stats.viewerSeconds[userId] = (stats.viewerSeconds[userId] ?? 0) + seconds;
 }
 
+/**
+ * Move the seconds watched so far from the open connections into the saved numbers.
+ * Runs every 30 s and on shutdown, so a server restart loses at most one interval of watch time
+ * instead of every open connection (Task 14b item 1). `since` always marks the first unsaved second,
+ * so presenceLeave and getSessionStatsFor stay correct without double counting.
+ */
+export function checkpointPresence(now: number = Date.now()): void {
+  let changed = false;
+  for (const [key, open] of openPresence) {
+    const seconds = Math.floor((now - open.since) / 1000);
+    if (seconds <= 0) continue;
+    const [sid, uid] = key.split('\u0000');
+    const stats = getSessionStats(sid);
+    stats.viewerSeconds[uid] = (stats.viewerSeconds[uid] ?? 0) + seconds;
+    open.since += seconds * 1000;
+    changed = true;
+  }
+  if (changed) store.save();
+}
+
+let checkpointTimer: ReturnType<typeof setInterval> | null = null;
+
+/** Start the 30 s checkpoint (once). The timer never keeps the process alive. */
+export function startPresenceCheckpoint(everyMs = 30_000): void {
+  if (checkpointTimer) return;
+  checkpointTimer = setInterval(() => checkpointPresence(), everyMs);
+  checkpointTimer.unref?.();
+}
+
 /** Test and shutdown helper: forget every open timer. */
 export function clearPresenceTimers(): void {
+  if (checkpointTimer) {
+    clearInterval(checkpointTimer);
+    checkpointTimer = null;
+  }
   for (const open of openPresence.values()) if (open.timer) clearTimeout(open.timer);
   openPresence.clear();
 }

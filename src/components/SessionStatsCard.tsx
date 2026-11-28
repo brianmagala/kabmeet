@@ -15,7 +15,7 @@ const clock = (t: number) => new Date(t).toLocaleTimeString([], { hour: '2-digit
 /** Viewers over time as a step line. Plain SVG, no chart library. */
 function ViewersLine({ points }: { points: SessionStats['timeline'] }) {
   if (points.length < 2) {
-    return <p className="text-xs text-muted">The line appears as people join and leave.</p>;
+    return <p className="text-xs text-muted">No viewer history yet. The line fills in as people join and leave.</p>;
   }
   const W = 320;
   const H = 72;

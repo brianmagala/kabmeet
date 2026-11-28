@@ -204,6 +204,10 @@ export function useSessionRealtime(sessionId: string, options: { monitor?: boole
             );
             break;
           }
+          case 'notification:new': {
+            window.dispatchEvent(new Event('kabmeet:notification'));
+            break;
+          }
           case 'engagement:award': {
             const badges = (payload.badges as Array<{ emoji: string; name: string }> | undefined) ?? [];
             for (const b of badges) pushToast(`${b.emoji} New badge: ${b.name}`, 'success');

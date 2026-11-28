@@ -15,10 +15,26 @@ import {
 } from './server/auth';
 import {
   getLeaderboard,
+  recordHostStarted,
   getSessionStatsFor,
   getSummary,
   setLeaderboardOptIn,
 } from './server/engagement';
+import {
+  addSubscription,
+  configurePush,
+  getPrefs,
+  listFor,
+  markRead,
+  notifySessionLive,
+  pushDeviceCount,
+  pushEnabled,
+  removeSubscription,
+  setPrefs,
+  startNotificationScheduler,
+  vapidPublicKey,
+} from './server/notifications';
+import { NOTIFICATION_KINDS } from './src/shared/notifications';
 import { registerEventRoutes } from './server/events';
 import {
   clearSessionCookies,
@@ -316,6 +332,8 @@ async function startServer() {
 
   const httpServer = createServer(app);
   attachWebSocketServer(httpServer);
+  configurePush();
+  startNotificationScheduler();
 
   // Health check
   app.get('/api/health', (_req, res) => {
@@ -741,6 +759,10 @@ async function startServer() {
         allowedStudents: [],
       };
       store.state.sessions.unshift(created);
+      if (parsed.data.startNow) {
+        recordHostStarted(req.authUser!.id);
+        notifySessionLive(created);
+      }
       store.save();
       res.status(201).json({
         session: {
@@ -860,6 +882,10 @@ async function startServer() {
       session.status = nextStatus;
       if (nextStatus === 'LIVE' && !session.startedAt) {
         session.startedAt = new Date().toISOString();
+      }
+      if (nextStatus === 'LIVE') {
+        recordHostStarted(session.hostId);
+        notifySessionLive(session);
       }
       store.save();
       broadcastToSession(id, 'session:status', { status: nextStatus });
@@ -1110,6 +1136,80 @@ async function startServer() {
     setLeaderboardOptIn(req.authUser!.id, parsed.data.leaderboardOptIn);
     store.save();
     res.json({ engagement: getSummary(req.authUser!) });
+  });
+
+
+  // --- Task 13: notifications (bell + Web Push) ---
+  app.get('/api/notifications', requireAuth, (req: AuthedRequest, res) => {
+    res.json(listFor(req.authUser!.id));
+  });
+
+  app.post('/api/notifications/read', requireAuth, (req: AuthedRequest, res) => {
+    const id = typeof req.body?.id === 'string' ? req.body.id : 'all';
+    markRead(req.authUser!.id, id);
+    res.json(listFor(req.authUser!.id));
+  });
+
+  const notificationConfig = (userId: string) => ({
+    pushEnabled: pushEnabled(),
+    publicKey: vapidPublicKey(),
+    prefs: getPrefs(userId),
+    pushDevices: pushDeviceCount(userId),
+    kinds: NOTIFICATION_KINDS,
+  });
+
+  app.get('/api/notifications/settings', requireAuth, (req: AuthedRequest, res) => {
+    res.json(notificationConfig(req.authUser!.id));
+  });
+
+  const kindsShape = z.object({
+    badge: z.boolean().optional(),
+    'session-live': z.boolean().optional(),
+    'class-soon': z.boolean().optional(),
+    'hand-approved': z.boolean().optional(),
+  });
+  const prefsSchema = z.object({
+    kinds: kindsShape.optional(),
+    quiet: z
+      .object({
+        enabled: z.boolean().optional(),
+        start: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/).optional(),
+        end: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/).optional(),
+      })
+      .optional(),
+  });
+  app.patch('/api/notifications/settings', requireAuth, (req: AuthedRequest, res) => {
+    const parsed = prefsSchema.safeParse(req.body);
+    if (!parsed.success) {
+      res.status(400).json({ message: 'Check the switches and use times like 22:00.' });
+      return;
+    }
+    setPrefs(req.authUser!.id, parsed.data);
+    res.json(notificationConfig(req.authUser!.id));
+  });
+
+  const subscribeSchema = z.object({
+    endpoint: z.string().url().max(1000).startsWith('https://'),
+    keys: z.object({ p256dh: z.string().min(10).max(200), auth: z.string().min(6).max(100) }),
+  });
+  app.post('/api/notifications/push/subscribe', requireAuth, (req: AuthedRequest, res) => {
+    if (!pushEnabled()) {
+      res.status(503).json({ message: 'Push is not set up on this server. The bell still works.' });
+      return;
+    }
+    const parsed = subscribeSchema.safeParse(req.body);
+    if (!parsed.success) {
+      res.status(400).json({ message: 'That browser subscription looks wrong.' });
+      return;
+    }
+    addSubscription(req.authUser!.id, parsed.data);
+    res.status(201).json(notificationConfig(req.authUser!.id));
+  });
+
+  app.post('/api/notifications/push/unsubscribe', requireAuth, (req: AuthedRequest, res) => {
+    const endpoint = typeof req.body?.endpoint === 'string' ? req.body.endpoint : '';
+    if (endpoint) removeSubscription(req.authUser!.id, endpoint);
+    res.json(notificationConfig(req.authUser!.id));
   });
 
   app.get('/api/leaderboard', requireAuth, (req: AuthedRequest, res) => {

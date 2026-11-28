@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { announceFollow } from '../lib/push';
 import {
   BarChart3,
   Captions,
@@ -175,6 +176,7 @@ export function WatchPage() {
         `/api/communities/${community.slug}/follow`,
         { method: 'POST' },
       );
+      if (res.isFollowing) announceFollow();
       setCommunity({
         ...community,
         isFollowing: res.isFollowing,

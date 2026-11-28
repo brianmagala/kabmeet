@@ -59,3 +59,14 @@ Kabmeet is meant to be shown inside the club site. Three things must be right, o
 
 The page serving Kabmeet must be https. Browsers refuse camera and screen capture on plain http, inside or outside an iframe.
 
+
+
+## 5. Phone alerts (optional)
+
+The bell in the header always works. To also send alerts to phones and desktops, give the server a pair of VAPID keys:
+
+```
+npx web-push generate-vapid-keys
+```
+
+Put the two values in `.env` as `VAPID_PUBLIC_KEY` and `VAPID_PRIVATE_KEY` (and a contact in `VAPID_SUBJECT`), then restart. Keep the private key secret and do not change the pair later, or every saved browser must subscribe again. Push needs https. Inside the `ai.kab.ac.ug/indabax` iframe the browser may not allow the permission box; the bell is the dependable part there, and people can turn alerts on by opening Kabmeet in its own tab.

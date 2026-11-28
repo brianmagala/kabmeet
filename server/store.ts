@@ -1,5 +1,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
+import type { AppNotification, NotificationPrefs } from '../src/shared/notifications';
 import type { SessionEngagementStats, UserEngagement } from './engagement';
 import type { EventsData } from './events';
 import type {
@@ -39,6 +40,12 @@ export interface SessionModerationState {
   endedForAll: boolean;
 }
 
+export interface StoredPushSubscription {
+  endpoint: string;
+  keys: { p256dh: string; auth: string };
+  createdAt: string;
+}
+
 export interface KabmeetStoreData {
   adminClaimed: boolean;
   users: StoredUser[];
@@ -62,6 +69,12 @@ export interface KabmeetStoreData {
   engagement?: Record<string, UserEngagement>;
   /** Watch time, reactions and viewers over time per session id. Missing in older stores. */
   sessionStats?: Record<string, SessionEngagementStats>;
+  /** Task 13. All optional so older data files still load. */
+  notifications?: Record<string, AppNotification[]>;
+  notificationPrefs?: Record<string, NotificationPrefs>;
+  pushSubscriptions?: Record<string, StoredPushSubscription[]>;
+  /** Keys of one-time notifications already sent (e.g. "live:sess-1"), so a restart never repeats them. */
+  notifiedKeys?: Record<string, number>;
   /** Events, hackathon teams, scores and certificates (server/events.ts). Missing in older stores. */
   eventsData?: EventsData;
 }

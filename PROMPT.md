@@ -105,7 +105,7 @@ Status words: `OPEN` > `IN PROGRESS` > `READY FOR REVIEW` > `VERIFIED` (or `REWO
 
 ## 7. Task queue and priority order (kept by the Master)
 
-**Order of work:** 8 > 1b > 4b > 14b > 9 > 10 > 15 > 6 > 11 > 13 > 12 > 2 > 3 (3 needs Brian). Reason: fix what hurts every user first (refresh, fonts), then polish video, then the feel of the site, then trustworthy data.
+**Order of work:** 8 > 1b > 4b > 9 > 10 > 15 > 6 > 11 > 12 > 2 > 3 (3 needs Brian). Reason: fix what hurts every user first (refresh, fonts), then polish video, then the feel of the site, then trustworthy data.
 
 | Task | Name | Status |
 |---|---|---|
@@ -122,8 +122,8 @@ Status words: `OPEN` > `IN PROGRESS` > `READY FOR REVIEW` > `VERIFIED` (or `REWO
 | 10 | A site that feels alive: hover and motion polish | `OPEN` |
 | 11 | Recordings and replays (LiveKit Egress) | `OPEN` |
 | 12 | Live captions and accessibility | `OPEN` |
-| 13 | Notifications: "going live" push and reminders | `OPEN` |
-| 14 | Engagement: badges, streaks, leaderboard, session analytics | `VERIFIED` (built and tested by the Master) |
+| 13 | Notifications: bell, "going live" push and reminders | `VERIFIED` (built and tested by the Master; follow-ups 13b) |
+| 14 | Engagement: badges, streaks, leaderboard, session analytics | `VERIFIED` (follow-ups 14b items 1 to 6 done 2026-11-28) |
 | 15 | Offline-first: queue chat sends, cached lists | `OPEN` |
 | 16 | Hackathon and IndabaX mode: schedule, teams, judges, certificates | `VERIFIED` (follow-ups 16b) |
 
@@ -201,12 +201,29 @@ Done by the Master on 2026-11-25 from the Kabmeet Loading Kit artifact. Six mome
 3. Run an accessibility pass (WCAG 2.1 AA): contrast, touch targets, screen reader labels.
 **Verify with:** keyboard-only walkthrough screenshots; contrast report.
 
-### Task 13: Notifications (`OPEN`)
-**Goal:** people come back when it matters. PWA is already set up.
-1. Web Push (service worker) for: a session you follow goes live, a class starts in 10 minutes, a host approved your hand.
-2. Settings page with per-type switches; quiet hours; never ask for permission on first load, ask after the first follow.
-3. In-app bell with the same events (works when push is blocked).
-**Verify with:** two browsers; follow, go live, notification arrives; unsubscribed user gets nothing.
+### Task 13: Notifications (`VERIFIED`)
+Built by the Master on 2026-11-28. Typecheck, build and 17 new tests pass (107 total); checked in a real browser (bell, dropdown, settings, opt-in card, 390 px header).
+
+**What exists**
+- **Rules (shared):** `src/shared/notifications.ts`: the four kinds (`badge`, `session-live`, `class-soon`, `hand-approved`), default switches, `inQuietHours` (Kabale time, wraps past midnight).
+- **Server:** `server/notifications.ts`. `notify(userId, {kind,title,body,href})` writes the bell entry (max 50 per person), tells open websocket connections (`notification:new`), and sends push if allowed. Data is in `store.state.notifications`, `notificationPrefs`, `pushSubscriptions`, `notifiedKeys` (all optional).
+- **Triggers:** badge and streak awards (first entry type, through `setAwardNotifier`), a public session going live (`notifySessionLive`, called when a session is created live or its status becomes LIVE; once per session), a 60 s sweep for sessions starting within 10 minutes (`runClassSoonSweep`; people who set a reminder, plus enrolled students of a private class), and a host approving a raised hand (`room:approve_speaker` in `server/ws.ts`).
+- **API (all need sign-in):** `GET /api/notifications`, `POST /api/notifications/read {id|'all'}`, `GET|PATCH /api/notifications/settings`, `POST /api/notifications/push/subscribe`, `POST /api/notifications/push/unsubscribe`.
+- **Browser:** `NotificationBell` in the header (unread count, list, mark read, tap to open; polls every 30 s while the tab is visible and refreshes at once on a socket event), `NotificationSettings` on Profile (per-type switches, quiet hours, this-device switch), `PushOptIn` (our own card, shown once after the first follow; the browser box appears only after "Turn on"), `public/push-sw.js` (loaded by the generated service worker through `importScripts`; it stays silent when Kabmeet is already visible), `src/lib/push.ts`.
+
+**Rules decided (keep them)**
+1. The bell always works. Push is an extra copy and only exists when the server has `VAPID_PUBLIC_KEY` and `VAPID_PRIVATE_KEY` (see `.env.example`, `docs/DEPLOYMENT.md` section 5). Without keys the settings page says so and nothing breaks.
+2. A switched-off kind produces nothing at all (bell and push). Quiet hours silence push only.
+3. Private classes never announce "going live" to followers. Only enrolled people get the 10 minute reminder.
+4. Never ask for permission on first load. Ask after the first follow, with our own card first.
+5. A browser belongs to one person: subscribing it for someone else removes it from the previous person. A 404 or 410 from the push service removes the subscription.
+6. No email, no other person's id and no chat text ever goes into a notification.
+
+**Follow-ups (Task 13b, small)**
+1. The hand-approved trigger is covered by a unit test of `notifyHandApproved` but not by a websocket test.
+2. Real delivery to a phone was not tested (the sandbox cannot reach a push service). Test once on the real domain with real VAPID keys, in its own tab and in the iframe.
+3. Add "Remind me" on Discover for events and hackathon demo slots as a trigger.
+4. The bell polls. A site-wide socket would make it instant on every page.
 
 ### Task 14: Engagement: badges, streaks, leaderboard, analytics (`VERIFIED`)
 Built by the Master on 2026-11-26. Typecheck, build and 33 of 33 tests pass; checked in a browser (badge toast, Profile, Leaderboard, Host Panel).
@@ -226,13 +243,13 @@ Built by the Master on 2026-11-26. Typecheck, build and 33 of 33 tests pass; che
 6. Leaderboard is opt-in (off by default). It shows display name, points, streak and badge count only: never email, id, classes or chat. Weekly board resets every Monday (Kabale time); a streak survives all of the next week.
 7. Badge faces are emoji as content (allowed by section 3). No emoji as icons.
 
-**Known limits and follow-ups (Task 14b, small)**
-1. Open connections are lost if the server restarts mid-session (their watch seconds are not saved; people reconnect and count again).
-2. The `host` badge ("On the Mic") is awarded when the host next opens Profile, not at the moment they go live.
-3. Seeded demo sessions have no timeline, so their Host Panel line stays empty until people join.
-4. `peakViewers` in the older moderation state still counts monitor connections; the new Session numbers use the corrected live count. Align them when touching `server/ws.ts` next.
-5. On a 390 px wide phone the page can scroll sideways a little; the header on the right edge looks cut off. Not caused by Task 14 (the new cards fit) but not yet traced. Check the AppShell header.
-6. Streak and badge toasts for people on slow links are the only notice; a bell entry (Task 13) would help.
+**Task 14b: items 1 to 6 DONE on 2026-11-28 (what changed is in brackets)**
+1. DONE. Open connections are lost if the server restarts mid-session. [`checkpointPresence` saves watch seconds every 30 s, so a restart loses at most 30 s; test in `tests/notifications.test.ts`]
+2. DONE. The `host` badge. [`recordHostStarted` runs when a public session is created live or set to LIVE]
+3. DONE. Seeded demo sessions have no timeline. [Kept honest: no fake data; the card now says "No viewer history yet"]
+4. DONE. `peakViewers` counted monitor connections. [`server/ws.ts` now uses `getLiveViewerCount` everywhere]
+5. DONE. 390 px header overflow. [Sign-out button is hidden below 640 px in the header and sits at the bottom of Profile instead; verified scrollWidth = 390 at 390 px]
+6. DONE. Badge and streak awards now also appear in the bell (Task 13).
 
 ### Task 15: Offline-first (`OPEN`)
 **Goal:** the site stays usable when the network drops (follow-up 5 of Task 4b).
@@ -399,6 +416,7 @@ Broadcast mode for 150+ viewers (HLS for the audience), live captions (Whisper),
 - Open decision for Brian: Task 3 (one codebase at the root, recommended).
 
 ---
+- 2026-11-28: **Embedding and Tasks 14b and 13 done by the Master.** Embedding in `ai.kab.ac.ug/indabax`: `X-Frame-Options` replaced by CSP `frame-ancestors` (`EMBED_ORIGINS`), checked in a real iframe. 14b items 1 to 6 fixed. Task 13 built: bell, per-type switches, quiet hours, Web Push on top (needs VAPID keys). 107 tests pass; browser-checked at 1280 px and 390 px. Real phone delivery still to test on the real domain (13b item 2). Order of work is now 8 > 1b > 4b > 9 > 10 > 15 > 6 > 11 > 12 > 2 > 3.
 
 ## 10. Executor reports (executors write below this line)
 
